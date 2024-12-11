@@ -3,6 +3,8 @@ import os.path
 from audioplayer import audio_playback 
 from find_audio_timecodes import find_audio_timecodes
 import time
+from time import strftime
+from time import gmtime
 import pandas
 from pydub import AudioSegment  
 import hyperlink
@@ -10,6 +12,11 @@ from IPython.display import HTML
 from datetime import datetime
 import webbrowser
 from llm_processing_google import process_text_with_gemini
+from utils import split_name
+import threading
+import re
+from time_converters import convert_milliseconds_to_time_format
+from audioplayer_extended import format_transcript, highlight_current_line, transcript_player, update_transcript
 
 #Import Buttons String Variables
 from buttons_graphics import refresh_ndb_button, change_input_type_button, add_data_item_button, look_for_name_in_transcript_button, ask_karin_button, send_button
@@ -68,25 +75,31 @@ class ui_correction():
         
         if is_combo == False:
             empty_column_1_x.append(
-                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_mitwirkende", len(input_list_mitwirkende))))
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_mitwirkende_vorname", len(input_list_mitwirkende))))
             empty_column_1_x.append(
-                sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_mitwirkende_alt", len(input_list_mitwirkende)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_mitwirkende_nachname", len(input_list_mitwirkende))))
+            empty_column_1_x.append(
+                sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_mitwirkende", len(input_list_mitwirkende)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
              
             #Show Hyperlink next to Column - Hidden!
             empty_column_1_x.append(sg.Text('', enable_events=True, font=('Arial Bold', 10), key=('URL_mitwirkende', len(input_list_mitwirkende)), visible = False, text_color = 'blue', background_color = 'white'))
-            
+
         else:
             empty_column_1_x.append(
-                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_mitwirkende_alt", len(input_list_mitwirkende))))
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_mitwirkende_vorname", len(input_list_mitwirkende))))
             empty_column_1_x.append(
-                sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = default_input_combo[0], expand_x=False, enable_events=True, visible = True, readonly=False, auto_size_text = True, key=("input_mitwirkende", len(input_list_mitwirkende)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
-        
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_mitwirkende_nachname", len(input_list_mitwirkende))))
+            empty_column_1_x.append(
+                sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = default_input_combo[0], expand_x=False, enable_events=True, visible = True, readonly=False, auto_size_text = True, key=("input_mitwirkende", len(input_list_mitwirkende)))) 
+                    
         #Show Hyperlink next to Column - Hidden!
         if default_hyperlink_to_show != '':
             empty_column_1_x.append(sg.Text(default_hyperlink_to_show, enable_events=True, font=('Arial Bold', 10), key=('URL_mitwirkende', len(input_list_mitwirkende)), visible = True, text_color = 'blue', background_color = 'white'))
         
         else:
             empty_column_1_x.append(sg.Text(default_hyperlink_to_show, enable_events=True, font=('Arial Bold', 10), key=('URL_mitwirkende', len(input_list_mitwirkende)), visible = False, text_color = 'blue', background_color = 'white'))
+
+        
 
         empty_column_1_y.append(#Refresh-NDB-Ergebnis-Button hinzufügen
             sg.Button('', image_data=refresh_ndb_button,
@@ -140,7 +153,12 @@ class ui_correction():
         empty_column_1_y.append(
                 sg.Button("Zu ThemaPerson", key=('verschieb_mitwirkende_themapers', len(input_list_mitwirkende))))
 
+        #Bemerkungsfeld
+        empty_column_1_x.append(sg.Text('Bemerkung:', font=('Arial Bold', 10), expand_x=False, justification='right', pad = ((0, 0),(0, 0)), key=("bemerkung_mitwirkende_text", len(input_list_mitwirkende))))
 
+        empty_column_1_x.append(
+            sg.Input(default_text = '', size=(25, 1), enable_events=True, readonly=False, justification='left', visible = True, key=("bemerkung_mitwirkende", len(input_list_mitwirkende))))
+        
         return(empty_column_1_x, empty_column_1_y)
     
     def empty_column_urheber(self, input_list_urheber, reference_roles_list_urheber, is_combo = False, default_input_freitext = '', default_input_combo = [], description_person = '', audio_starter_list = [], default_hyperlink_to_show = ''):
@@ -174,16 +192,20 @@ class ui_correction():
         
         if is_combo == False:
             empty_column_1_x.append(
-                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_urheber", len(input_list_urheber))))
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_urheber_vorname", len(input_list_urheber))))
             empty_column_1_x.append(
-                sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_urheber_alt", len(input_list_urheber)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_urheber_nachname", len(input_list_urheber))))
+            empty_column_1_x.append(
+                sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_urheber", len(input_list_urheber)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
         
             #Show Hyperlink next to Column - Hidden!
             empty_column_1_x.append(sg.Text('', enable_events=True, font=('Arial Bold', 10), key=('URL_urheber', len(input_list_urheber)), visible = False, text_color = 'blue', background_color = 'white'))
         
         else:
             empty_column_1_x.append(
-                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_urheber_alt", len(input_list_urheber))))
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_urheber_vorname", len(input_list_urheber))))
+            empty_column_1_x.append(
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_urheber_nachname", len(input_list_urheber))))
             empty_column_1_x.append(
                 sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = default_input_combo[0], expand_x=False, enable_events=True, visible = True, readonly=False, auto_size_text = True, key=("input_urheber", len(input_list_urheber)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
         
@@ -276,16 +298,20 @@ class ui_correction():
         
         if is_combo == False:
             empty_column_1_x.append(
-                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_tpers", len(input_list_tpers))))
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_tpers_vorname", len(input_list_tpers))))
             empty_column_1_x.append(
-                sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_tpers_alt", len(input_list_tpers)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_tpers_nachname", len(input_list_tpers))))
+            empty_column_1_x.append(
+                sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_tpers", len(input_list_tpers)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
         
             #Show Hyperlink next to Column - Hidden!
             empty_column_1_x.append(sg.Text('', enable_events=True, font=('Arial Bold', 10), key=('URL_tpers', len(input_list_tpers)), visible = False, text_color = 'blue', background_color = 'white'))
 
         else:
             empty_column_1_x.append(
-                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_tpers_alt", len(input_list_tpers))))
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_tpers_vorname", len(input_list_tpers))))
+            empty_column_1_x.append(
+                sg.Input(default_text = default_input_freitext, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_tpers_nachname", len(input_list_tpers))))
             empty_column_1_x.append(
                 sg.Combo(default_input_combo, size=(100, 1), font=('Arial Bold', 10), default_value = default_input_combo[0], expand_x=False, enable_events=True, visible = True, readonly=False, auto_size_text = True, key=("input_tpers", len(input_list_tpers)))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
             
@@ -448,6 +474,41 @@ class ui_correction():
 
         return(empty_column_1_x, empty_column_1_y)
     
+    def empty_column_realort(self, realisierung_ort_suggest):
+        """
+        Creates an empty line for UI-Part "Realisation Ort" if user clicks the "add new Realisation Ort" (+) button.
+
+        Args:
+            realisierung_ort_suggest(list): List of Realisation Ort Inputs for UI
+            
+        Returns:
+            empty_column_1_x, empty_column_1_y(lists): Wrappers with UI elements for single entry of "Realisation Ort".
+
+        """
+        empty_column_1_x = []
+        empty_column_1_y = []
+
+        empty_column_1_x.append(
+                sg.B(sg.SYMBOL_X, border_width=0, button_color=(sg.theme_text_color(), sg.theme_background_color()), k=('-DEL-_realort', len(realisierung_ort_suggest)), tooltip='Delete this item'))
+        empty_column_1_x.append(
+                    sg.Input(default_text = '', size=(25, 1), enable_events=True, readonly=False, visible = True, key=("realort", len(realisierung_ort_suggest))))
+        empty_column_1_x.append(
+                    sg.Text('', font=('Arial Bold', 10), expand_x=False, justification='left', key=('realisierung_kontext', len(realisierung_ort_suggest))))
+        empty_column_1_y.append(
+                    sg.Button('', image_data=look_for_name_in_transcript_button,
+                    button_color=(sg.theme_background_color(),sg.theme_background_color()),
+                    border_width=0, visible = True, key=('look_for_name_in_transcript_realort', len(realisierung_ort_suggest))))
+        empty_column_1_y.append(
+            sg.Combo([], size=(10, 1), font=('Arial Bold', 10), default_value = '', visible = False, expand_x=False, enable_events=True,  readonly=False, key=('audio_starter_realort', len(realisierung_ort_suggest))))
+        empty_column_1_y.append(
+            sg.Button("Play", visible = False, key=('Play_File_realort', len(realisierung_ort_suggest))))
+        empty_column_1_y.append(
+            sg.Button("Stop", visible = False, key=('Stop_File_realort', len(realisierung_ort_suggest))))
+        
+        
+        
+        return(empty_column_1_x, empty_column_1_y)
+    
     def empty_column_sprachen(self, input_list_sprachen):
         """
         Creates an empty line for UI-Part "Sprachen" if user clicks the "add new Sprache" (+) button.
@@ -501,6 +562,17 @@ class ui_correction():
             
         empty_column_1_x.append(
             sg.Combo(datelists[2], size=(10, 1), font=('Arial Bold', 10), default_value = 1950, expand_x=False, enable_events=True, readonly=False, key=("input_tereignis_jahre", len(input_list_tereignis))))
+        
+        empty_column_1_x.append(sg.Text(' bis ', pad=(5, (0, 0)), background_color = 'black',k=('tereignis_datum_text_bis', len(input_list_tereignis)), font=('Arial Bold', 10)))
+            
+        empty_column_1_x.append(
+            sg.Combo(datelists[0], size=(5, 1), font=('Arial Bold', 10), default_value = 1, expand_x=False, enable_events=True, readonly=False, key=("input_tereignis_tage_ende", len(input_list_tereignis))))
+
+        empty_column_1_x.append(
+            sg.Combo(datelists[1], size=(5, 1), font=('Arial Bold', 10), default_value = 1, expand_x=False, enable_events=True, readonly=False, key=("input_tereignis_monate_ende", len(input_list_tereignis))))
+            
+        empty_column_1_x.append(
+            sg.Combo(datelists[2], size=(10, 1), font=('Arial Bold', 10), default_value = 1950, expand_x=False, enable_events=True, readonly=False, key=("input_tereignis_jahre_ende", len(input_list_tereignis))))
         
         empty_column_1_y.append(
             sg.Button('', image_data=look_for_name_in_transcript_button,
@@ -624,21 +696,27 @@ class ui_correction():
                 sg.Combo(list(list_gattungen), size=(25, 1), font=('Arial Bold', 10), default_value = list(gattungen_suggest)[0], expand_x=False, enable_events=True,  readonly=False, key=('combo_gattungen', len(gattungen_suggest)))]
         return(column_gattungen)
 
-    def popup_window(self):
-        """Defines Popup-Window for individual  Transcript Search functionality
+    def popup_window(self, transcripts_list, start_sorted, audiofile_path):
+        """Defines Popup-Window for individual Transcript Search functionality
         
         Returns:
             window_popup(SimpleGUI Element): Window Element with all functions needed
         
         """
+        
         #Audioplayer Such-Version
         column_player1 = []
         column_player2 = []
         column_player3 = []
+        column_player4 = []
         self.eventlist_search_player_start = []
         self.eventlist_search_player_end = []
         #heading = [sg.Text('Transkript-Audio-Suche', pad=(5, (50, 10)), background_color = 'black', font=('Arial Bold', 20))]
-        
+        audioplayer2 = audio_playback(audiofile_path)
+
+        slider = [sg.Slider((0, audioplayer2.get_duration()), orientation='horizontal', key='-SL-', enable_events=True, disable_number_display = True, size = (100, 20))]
+        text_time = [sg.Text(audioplayer2.format_time(0), background_color = 'black', font=('Arial Bold', 20), key='current_time')]
+
         column_player1.append(
             sg.Input(default_text = '', size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_file_search")))
         column_player1.append(#Umwandlung Freitext-Feld Button einfügen
@@ -650,19 +728,153 @@ class ui_correction():
         column_player2.append(
             sg.Button("Play", visible = False, key=f'Play_File_search'))
         column_player2.append(
+            sg.Button("Pause", visible = False, key=f'Pause_File_search'))
+        column_player2.append(
             sg.Button("Stop", visible = False, key=f'Stop_File_search'))
         column_player2.append(
             sg.Button("Transcript", visible = False, key=f'Transcript_File_search'))
-        column_player3.append(sg.Multiline(default_text='', visible = False, size=(None, 3), key = 'transcript_search1'))
+        column_player2.append(
+            sg.Button("Gesamtes Transcript", visible = False, key=f'Transcript_File_search_whole'))
+        
+        column_player2.append(sg.Slider((0, audioplayer2.get_duration()), orientation='horizontal', key='-SL-_search', enable_events=True, disable_number_display = True, size = (50, 20), visible = False))
+        
+        column_player2.append(
+        sg.Text(audioplayer2.format_time(0), background_color = 'black', font=('Arial Bold', 20), key='current_time_search', visible = False))
+        
+        column_player3.append(sg.Multiline(default_text='', visible = False, size=(200, 5), write_only=True, key = 'transcript_search1'))
+        column_player4.append(sg.Multiline(visible = False, size=(200, 300), write_only=True,reroute_cprint=True, key = 'transcript_search2'))
+        
         #Popup Window
         layout_popup = []
         layout_popup.append([sg.Column([column_player1], pad = ((0, 0), (10, 0)), key = ('column_search_player_1'), visible = True)])
         layout_popup.append([sg.Column([column_player2], pad = ((0, 0), (10, 0)), key = ('column_search_player_1'), visible = True)])
         layout_popup.append([sg.Column([column_player3], pad = ((0, 0), (10, 0)), key = ('column_search_player_1'), visible = True)])
-        window_popup = sg.Window('Helpers', layout_popup, size=(500, 200), resizable=True, background_color='DarkSlateGray', keep_on_top=True, border_depth=0.5, finalize = True)
-        return(window_popup)
+        layout_popup.append([sg.Column([column_player4], pad = ((0, 0), (10, 0)), key = ('column_search_player_1'), visible = True)])
+
+        layout = layout_popup
+        window = sg.Window('Helpers', layout, resizable=True, background_color='DarkSlateGray', keep_on_top=True, border_depth=0.5, finalize = True)
+        while True:
+            event, values = window.read()
+            if event == sg.WIN_CLOSED or event == "Cancel":
+                window.close()
+                break
+                #return None
+            if event == 'look_for_search_in_transcript':
+                values_name = values[("input_file_search")]
+                audio_starts = find_audio_timecodes().find_word_in_transcript(values_name, transcripts_list, start_sorted)
+                if len(audio_starts[0]) >0:
+                    window[('audio_starter_transcript_search')].update(values = audio_starts[0], value = audio_starts[0][0], visible=True)
+                    window[('Play_File_search')].update(visible=True)
+                    window[('Pause_File_search')].update(visible=True)
+                    window[('Stop_File_search')].update(visible=True)
+                    window[('Transcript_File_search')].update(visible=True)
+                    window[('Transcript_File_search_whole')].update(visible=True)
+                    window[('-SL-_search')].update(visible=True)
+                    window[('current_time_search')].update(visible=True)
+
+                    self.eventlist_search_player_start.append('Play_File_search')
+                    self.eventlist_search_player_end.append('Stop_File_search')
+                    skip_time = values['audio_starter_transcript_search']
+                    audioplayer2.scroll_playback_to_second(skip_time)
+                    window['-SL-_search'].update(value = skip_time)
+                    try:
+                        window['current_time_search'].update(audioplayer2.format_time(skip_time))
+                    except ValueError:
+                        pass
+                    
+                else:
+                    window[('audio_starter_transcript_search')].update(visible=False)
+                    window[('Transcript_File_search')].update(visible=False)
+                    window[('Play_File_search')].update(visible=False)
+                    window[('Pause_File_search')].update(visible=False)
+                    window[('Stop_File_search')].update(visible=False)
+                    window[('transcript_search1')].update(visible=False)
+                    window[('transcript_search2')].update(visible=False)
+                    window[('-SL-_search')].update(visible=False)
+                    window[('current_time_search')].update(visible=False)
+            
+            if event == 'audio_starter_transcript_search':
+                skip_time = values['audio_starter_transcript_search']
+                audioplayer2.scroll_playback_to_second(skip_time)
+                window['-SL-_search'].update(value = skip_time)
+                window['current_time_search'].update(audioplayer2.format_time(skip_time))
+
+            if event == 'Play_File_search': 
+                skip_time = int(values['-SL-_search'])
+                print('DEBUG SKIP TIME:', skip_time)
+                audioplayer2.play_file()
+                audioplayer2.scroll_playback_to_second(skip_time)
+            
+            if event == 'Stop_File_search': 
+                audioplayer2.stop_playback()
+                window['-SL-_search'].update(value = 0)
+                window['current_time_search'].update(audioplayer2.format_time(0))
+            
+            if event == 'Pause_File_search': 
+                audioplayer2.pause_playback()
+                position = audioplayer2.get_position()
+                window['-SL-_search'].update(value = position)
+                window['current_time_search'].update(audioplayer2.format_time(position))
+
+            if event == '-SL-_search': 
+                audioplayer2.scroll_playback_to_second(int(values['-SL-_search']))
+                
+                window['current_time_search'].update(audioplayer2.format_time(int(values['-SL-_search'])))
+
+            if event == 'Transcript_File_search_whole':
+                searchtext = values[("input_file_search")]
+                
+                #Gesamttranskript in bunt einfügen
+                window[('transcript_search2')].update('',visible=False)
+                window[('transcript_search2')].update(visible=True)
+                
+                for t in range(len(transcripts_list)):
+                    
+                    sg.cprint(f'{strftime("%H:%M:%S", gmtime(start_sorted[t]))}:', font='Arial 12', colors='white on green', end = '')
+                    if searchtext.lower() !='' and searchtext.lower() in transcripts_list[t].lower():
+                        split_transcript = transcripts_list[t].lower().split(searchtext.lower())
+                        for i in range(len(split_transcript)):
+                            if i < len(split_transcript)-1:
+                                sg.cprint(split_transcript[i], font='Arial 12', end = '')
+                            else:
+                                sg.cprint(split_transcript[i], font='Arial 12')
+                            
+                            if len(split_transcript)>1 and i < len(split_transcript)-1:
+                                sg.cprint(searchtext, colors='white on red', font='Arial 12 bold', end = '')
+                    else:
+                        sg.cprint(transcripts_list[t], font='Arial 12')
+
+            #Teilskript
+            if event == "Transcript_File_search":
+                print('DEBUG PopUp Event Transcript File Search NEW')
+                
+                print('event_popup_2')
+                values_start = values[('audio_starter_transcript_search')]
+
+                #Transkriptausschnitt einfügen
+                index_transcript = start_sorted.index(values_start)
+                print('index Transcript:', index_transcript)
+                list_text = []
+                joiner = ' '
+                if index_transcript >0:
+                    list_text.append(transcripts_list[index_transcript-1])
+                                
+                    list_text.append(transcripts_list[index_transcript])
+                            
+                if index_transcript < len(transcripts_list):
+                        
+                    list_text.append(transcripts_list[index_transcript+1])
+                        
+                text_gesamt = joiner.join(list_text)
+
+                window[('transcript_search1')].update(value=text_gesamt, visible=True)
+                
+                print('Contents changed of window')
+                    
+                #return None
+        window.close()
     
-    def popup_window_karin(self): 
+    def popup_window_karin(self, transcripts_list): 
         """Defines Popup-Window for interactive AI Helper K.AR.IN
         
         Returns:
@@ -670,6 +882,8 @@ class ui_correction():
         """
         #Frage-Antwort Tool
         #Frage  
+        processor = process_text_with_gemini()
+        print('Open K.AR.IN')
         column1= [sg.Multiline(default_text='Stelle K.AR.IN ("Künstliche ARchiv INtelligenz") eine Frage zum Audio!', size=(60,10), key=('ask_karin_input')), sg.Button('', image_data=send_button,
             button_color=(sg.theme_background_color(),sg.theme_background_color()),
             border_width=0, visible = True, key=('ask_karin'))]
@@ -683,11 +897,88 @@ class ui_correction():
         layout_popup.append([sg.Column([column1], pad = ((0, 0), (10, 0)), key = ('column_search_player_1'), visible = True)])
         layout_popup.append([sg.Column([column2], pad = ((0, 0), (10, 0)), key = ('column_search_player_1'), visible = True)])
         
-        window_popup_karin = sg.Window('Frag K.AR.IN', layout_popup, size=(600, 400), resizable=True, background_color='DarkSlateGray', keep_on_top=True, border_depth=0.5, finalize = True)
-        return(window_popup_karin)
+        window_popup_karin = sg.Window('Frag K.AR.IN', layout_popup, size=(600, 400), resizable=True, background_color='DarkSlateGray', keep_on_top=True, border_depth=0.5, finalize = False)
 
+        while True:
+            event, values = window_popup_karin.read()
+            if event == sg.WIN_CLOSED or event == "Cancel":
+                window_popup_karin.close()
+                break
+            if event == 'ask_karin':#Popup Event
+                print('event_popup_3')
+                if values[('ask_karin_input')] != '':
+                    print('event_popup_4')
+                    values_input = values[('ask_karin_input')]
+                    joiner = ' '
+                    transcript_full = joiner.join(transcripts_list)
+                    #print(transcript_full)
+                    answer_llm = processor.ask_karin(transcript_full, values_input)
+                     
+                    window_popup_karin[('answer_karin')].update(visible=True)
+                    window_popup_karin[('ask_karin_output')].update(visible=True, value=answer_llm)
+        window_popup_karin.close()
+        
+    
+    def popup_window_audioplayer(self, audio_file1, transcript_lines, timecodes, audio_file2): 
+        """Defines Popup-Window for Audioplayer of source Audiofile
 
-    def main_window(self, transcripts_list, start_sorted, input_list_urheber, description_list_urheber, roles_found_urheber, reference_roles_list_urheber, ndb_urheber_data, input_list_mitwirkende, description_list_mitwirkende, roles_found_mitwirkende, reference_roles_list_mitwirkende, ndb_mitwirkende_data, text_input_titel, zusammenfassung, input_list_tpers, description_list_tpers, ndb_thema_persons_suggest, input_list_torte, description_list_torte, torte_list_llm_original, tinst_suggest_bundle, tereignis_suggest_bundle, audiofiles_path, audiofile, original_file, gattungen_suggest, genre_suggest, sprachen_suggest_original, sprachen_suggest_ndb, metatags_suggest, deskriptoren_suggest, audioraum_darstellung_global_suggest):
+        Args:
+            audiofile_path(str): Path to audiofile of whole audio.
+        
+        Returns:
+            window_popup_audioplayer(SimpleGUI Element): Complete Popup UI element for Audioplayer functionality.
+        """
+        """column_audioplayer = []
+        #Audioplayer init Gesamtfile
+        audioplayer1 = audio_playback(audiofile_path)
+        heading = [sg.Text('Play File', pad=(5, (50, 10)), background_color = 'black', font=('Arial Bold', 20))]
+        player_line = [sg.Button("Play", key='Play_File'), sg.Button("Pause", key='Pause_File'), sg.Button("Stop", key='Stop_File')] #, sg.Button("Resume", key='Resume_File')
+        slider = [sg.Slider((0, audioplayer1.get_duration()), orientation='horizontal', key='-SL-', enable_events=True, disable_number_display = True, size = (100, 20))]
+        text_time = [sg.Text(audioplayer1.format_time(0), background_color = 'black', font=('Arial Bold', 20), key='current_time')]
+        column_audioplayer.append(heading)
+        column_audioplayer.append(player_line)
+        column_audioplayer.append(slider)
+        column_audioplayer.append(text_time)
+        
+        #Popup Window
+        layout_popup = []
+        layout_popup.append([sg.Column(column_audioplayer, pad = ((0, 0), (10, 0)), size=(950, 400), expand_x = True, key = ('column_audioplayer_1'), visible = True)])
+        
+        window_popup_audioplayer = sg.Window('Audioplayer', layout_popup, size=(950, 400), resizable=True, background_color='DarkSlateGray', keep_on_top=True, border_depth=0.5, finalize = False)
+        while True:
+            event, values = window_popup_audioplayer.read()
+            if event == sg.WIN_CLOSED or event == "Cancel":
+                window_popup_audioplayer.close()
+                break
+
+            if event == 'Play_File': 
+                audioplayer1.play_file()
+                audioplayer1.scroll_playback_to_second(int(values['-SL-']))
+                position = audioplayer1.get_position()
+                window_popup_audioplayer['-SL-'].update(value = position)
+                window_popup_audioplayer['current_time'].update(audioplayer1.format_time(position))
+
+            if event == 'Pause_File': 
+                audioplayer1.pause_playback()
+                position = audioplayer1.get_position()
+                window_popup_audioplayer['-SL-'].update(value = position)
+                window_popup_audioplayer['current_time'].update(audioplayer1.format_time(position))
+            
+            if event == 'Stop_File': 
+                audioplayer1.stop_playback()
+                window_popup_audioplayer['-SL-'].update(value = 0)
+                window_popup_audioplayer['current_time'].update(audioplayer1.format_time(0))
+
+            if event == '-SL-':
+                #print(values['-SL-'])
+                #audioplayer1.play_file()
+                audioplayer1.scroll_playback_to_second(int(values['-SL-']))
+                window_popup_audioplayer['current_time'].update(audioplayer1.format_time(int(values['-SL-'])))
+        window_popup_audioplayer.close()"""
+              
+        transcript_player(audio_file1, transcript_lines, timecodes, audio_file2)
+
+    def main_window(self, transcripts_list, start_sorted, input_list_urheber, description_list_urheber, roles_found_urheber, reference_roles_list_urheber, ndb_urheber_data, input_list_mitwirkende, description_list_mitwirkende, roles_found_mitwirkende, reference_roles_list_mitwirkende, ndb_mitwirkende_data, text_input_titel, zusammenfassung, input_list_tpers, description_list_tpers, ndb_thema_persons_suggest, input_list_torte, description_list_torte, torte_list_llm_original, tinst_suggest_bundle, tereignis_suggest_bundle, audiofiles_path, audiofile, original_file, gattungen_suggest, genre_suggest, sprachen_suggest_original, sprachen_suggest_ndb, metatags_suggest, deskriptoren_suggest, audioraum_darstellung_global_suggest, realisierung_datum_suggest, realisierung_ort_suggest, realisierung_ort_kontext, realisierung_typ_suggest):
 
         """Main Window Element which contains the standard elements shown when UI-Window appears. Real appearence is flexible and depends on the amount and kind of input data but general structure is always the same.
         
@@ -724,6 +1015,10 @@ class ui_correction():
             metatags_suggest(list): List of suggested Metatags
             deskriptoren_suggest(list): List of suggested Deskriptoren
             audioraum_darstellung_global_suggest(json_like): User-Pre-defined suggestion for Audioraumdarstellung
+            realisierung_datum_suggest(list): Suggest for Datum for Realisierungs-Eintrag, that is formatted as list of its contents.
+            realisierung_ort_suggest(str): Suggest for Realisierungs-Ort
+            realisierung_ort_Kontext(str): Transcription context for Realisierungs-Ort
+            realisierung_typ_suggest(str): Suggest for Typ Realisierung
 
         Returns:
             sg.Window(SimpleGUI Object): General Window for AK-Correction Menue with all elements and data from the Defs input. Can be edited by user.
@@ -739,11 +1034,12 @@ class ui_correction():
         list_langleseabspielgeschwindigkeit = df2['langbezeichnung']
 
         #Spalte für Content definieren:
+        list_master = []
         column_1 = []
         list_lines = []
 
         #Top Menu Bar
-        menu_def = [['&Assistenten', ['&Stichwortsuche::stichwortsuche', '&Frag K.AR.IN']]]
+        menu_def = [['&Assistenten', ['&Stichwortsuche::stichwortsuche', '&Frag K.AR.IN', '&Audioplayer']]]
         column_1.append([sg.MenubarCustom(menu_def)])
 
         #Überschrift hinzufügen
@@ -783,18 +1079,23 @@ class ui_correction():
             print(audio_starts)
             column_1_x = []
             column_1_y = []
-           # column_1_xa = []
-            #column_1_xb = []
+
+            #Für Freitextfelder aufteilen in Vor- und Nachnamensfelder
+            first_name, last_name = split_name(input_list_mitwirkende[i])
+           
             column_1_x.append(
                     sg.B(sg.SYMBOL_X, border_width=0, button_color=(sg.theme_text_color(), sg.theme_background_color()), k=('-DEL-_mitwirkende', i), tooltip='Delete this item'))
 
             #Gegebenen Input verarbeiten
             print('DEBUG N.N. Data:', ndb_mitwirkende_data)
             if ndb_mitwirkende_data[0] == None or len(ndb_mitwirkende_data[i][0])==0: #Wenn beim NDB-Abgleich nichts gefunden wurde für den einzelnen Mitwirkenden oder generell keine Mitwirkenden gefunden wurden und daher "N.N. angelegt werden soll als einzelner Mitwirkender."
+
                 column_1_x.append(
-                        sg.Input(default_text = input_list_mitwirkende[i], size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_mitwirkende", i)))
+                        sg.Input(default_text = first_name, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_mitwirkende_vorname", i)))
                 column_1_x.append(
-                    sg.Combo([], size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_mitwirkende_alt", i))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
+                        sg.Input(default_text = input_list_mitwirkende[i], size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_mitwirkende_nachname", i)))
+                column_1_x.append(
+                    sg.Combo([], size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_mitwirkende", i))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
                 
                 #Show Hyperlink next to Column - Hidden!
                 column_1_x.append(sg.Text('', enable_events=True, font=('Arial Bold', 10), key=('URL_mitwirkende', i), visible = False, text_color = 'blue', background_color = 'white'))
@@ -822,7 +1123,9 @@ class ui_correction():
                 
                 #Unsichtbarer alternativer Input, der  ggf. aktiviert wird unten
                 column_1_x.append(
-                        sg.Input(default_text = input_list_mitwirkende[i], size=(25, 1), enable_events=True, visible = False, key=("input_mitwirkende_alt", i)))
+                        sg.Input(default_text = first_name, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_mitwirkende_vorname", i)))
+                column_1_x.append(
+                        sg.Input(default_text = last_name, size=(25, 1), enable_events=True, readonly=False, visible = False, key=("input_mitwirkende_nachname", i)))
                 
                 #Show Hyperlink next to Column
                 column_1_x.append(sg.Text(self.hyperlink_list_mitwirkende[i][0], enable_events=True, font=('Arial Bold', 10), text_color = 'blue', key=('URL_mitwirkende', i), background_color = 'white')) 
@@ -835,6 +1138,13 @@ class ui_correction():
                 self.alt_input.append(False)
                 self.orig_input.append('Dropdown')
                 self.final_input_is_original.append(True)
+
+            #Bemerkungs-Freitextfeld
+            
+            column_1_x.append(sg.Text('Bemerkung:', font=('Arial Bold', 10), expand_x=False, justification='left', enable_events=True, pad = ((0, 0),(0, 0)), key=("bemerkung_mitwirkende_text", i)))
+
+            column_1_x.append(
+                sg.Input(default_text = '', size=(25, 1), enable_events=True, readonly=False, justification='left', visible = True, key=("bemerkung_mitwirkende", i)))
 
             column_1_y.append(#Refresh-NDB-Ergebnis-Button hinzufügen
                 sg.Button('', image_data=refresh_ndb_button,
@@ -933,17 +1243,21 @@ class ui_correction():
             print(audio_starts)
             column_1_x = []
             column_1_y = []
-            column_1_x = []
-            column_1_x = []
+
+            #Für Freitextfelder aufteilen in Vor- und Nachnamensfelder
+            first_name, last_name = split_name(input_list_urheber[i])
+
             column_1_x.append(
                     sg.B(sg.SYMBOL_X, border_width=0, button_color=(sg.theme_text_color(), sg.theme_background_color()), k=('-DEL-_urheber', i), tooltip='Delete this item'))
 
             #Gegebenen Input verarbeiten
             if len(ndb_urheber_data[i][0])==0: #Wenn beim NDB-Abgleich nichts gefunden wurde
                 column_1_x.append(
-                        sg.Input(default_text = input_list_urheber[i], size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_urheber", i)))
+                        sg.Input(default_text = first_name, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_urheber_vorname", i)))
                 column_1_x.append(
-                    sg.Combo([], size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_urheber_alt", i))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
+                        sg.Input(default_text = last_name, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_urheber_nachname", i)))
+                column_1_x.append(
+                    sg.Combo([], size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_urheber", i))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
 
                 #Show Hyperlink next to Column - Hidden!
                 column_1_x.append(sg.Text('', enable_events=True, font=('Arial Bold', 10), key=('URL_urheber', i), visible = False, text_color = 'blue', background_color = 'white'))
@@ -969,8 +1283,12 @@ class ui_correction():
 
                 column_1_x.append(
                     sg.Combo(list_to_show, size=(100, 1), font=('Arial Bold', 10), default_value = list_to_show[0], expand_x=False, auto_size_text = True, enable_events=True,  readonly=False, key=("input_urheber", i)))
+                
                 column_1_x.append(#Unsichtbarer alternativer Input, der  ggf. aktiviert wird unten
-                        sg.Input(default_text = input_list_urheber[i], size=(25, 1), enable_events=True, visible = False, key=("input_urheber_alt", i)))
+                        sg.Input(default_text = first_name, size=(25, 1), enable_events=True, visible = False, key=("input_urheber_vorname", i)))
+
+                column_1_x.append(#Unsichtbarer alternativer Input, der  ggf. aktiviert wird unten
+                        sg.Input(default_text = last_name, size=(25, 1), enable_events=True, visible = False, key=("input_urheber_nachname", i)))
                 
                 #Show Hyperlink next to Column
                 column_1_x.append(sg.Text(self.hyperlink_list_urheber[i][0], enable_events=True, font=('Arial Bold', 10), text_color = 'blue', key=('URL_urheber', i), background_color = 'white')) 
@@ -1081,6 +1399,7 @@ class ui_correction():
         self.current_hyperlink_tpers = []
         print('DEBUG TPers:', input_list_tpers)
         for i in range(len(input_list_tpers)):
+            
             if input_list_tpers[i] != None:
                 if len(ndb_thema_persons_suggest[i]) >0:
                     #Get Timecodes for audioplayer
@@ -1088,6 +1407,9 @@ class ui_correction():
                     print(audio_starts)
                     column_2_x = []
                     column_2_y = []
+
+                    #Für Freitextfelder aufteilen in Vor- und Nachnamensfelder
+                    first_name, last_name = split_name(input_list_tpers[i])
                     #column_2_xa = []
                     #column_2_xb = []
 
@@ -1095,10 +1417,12 @@ class ui_correction():
                         sg.B(sg.SYMBOL_X, border_width=0, button_color=(sg.theme_text_color(), sg.theme_background_color()), k=('-DEL-_tpers', i), tooltip='Delete this item'))
 
                     if len(ndb_thema_persons_suggest[i][0])==0: #Wenn beim NDB-Abgleich nichts gefunden wurde
-                        column_2_x.append(sg.Input(default_text = input_list_tpers[i], size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_tpers", i)))
+                        column_2_x.append(sg.Input(default_text = first_name, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_tpers_vorname", i)))
+
+                        column_2_x.append(sg.Input(default_text = last_name, size=(25, 1), enable_events=True, readonly=False, visible = True, key=("input_tpers_nachname", i)))
 
                         column_2_x.append(
-                            sg.Combo([], size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_tpers_alt", i))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
+                            sg.Combo([], size=(100, 1), font=('Arial Bold', 10), default_value = '', expand_x=False, enable_events=True, visible = False, readonly=False, auto_size_text = True, key=("input_tpers", i))) #unsichtbarer Input, der aktiviert wird, wenn nach Änderung desTextes doch noch Treffer in NDB gefunden werden.
                         
                         #Show Hyperlink next to Column - Hidden!
                         column_2_x.append(sg.Text('', enable_events=True, font=('Arial Bold', 10), key=('URL_tpers', i), visible = False, text_color = 'blue', background_color = 'white'))
@@ -1125,7 +1449,10 @@ class ui_correction():
                             sg.Combo(list_to_show_3, size=(100, 1), font=('Arial Bold', 10), default_value = list_to_show_3[0], expand_x=False, enable_events=True, auto_size_text = True, readonly=False, key=('input_tpers', i)))
                         
                         column_2_x.append(#Unsichtbarer alternativer Input, der  ggf. aktiviert wird unten
-                                sg.Input(default_text = input_list_tpers[i], size=(25, 1), enable_events=True, visible = False, key=("input_tpers_alt", i)))
+                                sg.Input(default_text = first_name, size=(25, 1), enable_events=True, visible = False, key=("input_tpers_vorname", i)))
+                        
+                        column_2_x.append(#Unsichtbarer alternativer Input, der  ggf. aktiviert wird unten
+                                sg.Input(default_text = first_name, size=(25, 1), enable_events=True, visible = False, key=("input_tpers_nachname", i)))
 
                         #Show Hyperlink next to Column
                         column_2_x.append(sg.Text(self.hyperlink_list_tpers[i][0], enable_events=True, font=('Arial Bold', 10), text_color = 'blue', key=('URL_tpers', i), background_color = 'white')) 
@@ -1158,7 +1485,7 @@ class ui_correction():
                         column_2_y.append(
                             sg.Button('', image_data=look_for_name_in_transcript_button,
                                 button_color=(sg.theme_background_color(),sg.theme_background_color()),
-                                border_width=0, visible = True, key=('look_for_name_in_transcript_tpers',i)))
+                                border_width=0, visible = False, key=('look_for_name_in_transcript_tpers',i)))
 
                     if len(audio_starts[0]) >0:
                         column_2_y.append( 
@@ -1297,9 +1624,26 @@ class ui_correction():
                         border_width=0, pad = ((40, 0), (0, 0)), key=('refresh_ndb_torte', i)))
                 
             column_1_y.append(#Umwandlung Freitext-Feld Button einfügen
-            sg.Button('', image_data=change_input_type_button,
+                sg.Button('', image_data=change_input_type_button,
                     button_color=(sg.theme_background_color(),sg.theme_background_color()),
                     border_width=0, visible = True, key=('change_input_type_torte', i)))
+            
+            if self.hyperlink_list_torte[i] != None:
+                if self.hyperlink_list_torte[i][0] != None and len(self.hyperlink_list_torte[i][0]) == 0:
+                    column_1_y.append(
+                        sg.Button('', image_data=look_for_name_in_transcript_button,
+                            button_color=(sg.theme_background_color(),sg.theme_background_color()),
+                            border_width=0, visible = True, key=('look_for_name_in_transcript_torte', i)))
+                else:
+                    column_1_y.append(
+                        sg.Button('', image_data=look_for_name_in_transcript_button,
+                            button_color=(sg.theme_background_color(),sg.theme_background_color()),
+                            border_width=0, visible = False, key=('look_for_name_in_transcript_torte', i)))
+            else:
+                column_1_y.append(
+                    sg.Button('', image_data=look_for_name_in_transcript_button,
+                        button_color=(sg.theme_background_color(),sg.theme_background_color()),
+                        border_width=0, visible = False, key=('look_for_name_in_transcript_torte', i)))
 
             if len(audio_starts[0]) >0:
                 column_1_y.append(
@@ -1423,6 +1767,17 @@ class ui_correction():
             sg.Button('', image_data=change_input_type_button,
                     button_color=(sg.theme_background_color(),sg.theme_background_color()),
                     border_width=0, visible = True, key=('change_input_type_tinst', i)))
+            
+            if len(input_list_tinst_ndb[i][0])==0:    
+                column_1_y.append(
+                    sg.Button('', image_data=look_for_name_in_transcript_button,
+                            button_color=(sg.theme_background_color(),sg.theme_background_color()),
+                            border_width=0, visible = True, key=('look_for_name_in_transcript_tinst',i)))
+            else:
+                column_1_y.append(
+                    sg.Button('', image_data=look_for_name_in_transcript_button,
+                            button_color=(sg.theme_background_color(),sg.theme_background_color()),
+                            border_width=0, visible = False, key=('look_for_name_in_transcript_tinst',i)))
 
             if len(audio_starts[0]) >0:
                 column_1_y.append(
@@ -1473,6 +1828,9 @@ class ui_correction():
         tereignis_list_tage = tereignis_suggest_bundle[2]
         tereignis_list_monate = tereignis_suggest_bundle[3]
         tereignis_list_jahre = tereignis_suggest_bundle[4]
+        tereignis_list_tage_ende = tereignis_suggest_bundle[5]
+        tereignis_list_monate_ende = tereignis_suggest_bundle[6]
+        tereignis_list_jahre_ende = tereignis_suggest_bundle[7]
 
         self.final_input_is_original_tereignis = []
 
@@ -1502,6 +1860,17 @@ class ui_correction():
             
             column_1_x.append(
                     sg.Combo(datelists[2], size=(10, 1), font=('Arial Bold', 10), default_value = tereignis_list_jahre[i], expand_x=False, enable_events=True, readonly=False, key=("input_tereignis_jahre", i)))
+            
+            column_1_x.append(sg.Text(' bis ', font=('Arial Bold', 10), background_color = 'black', expand_x=False, justification='left', key=('tereignis_datum_text_bis', i)))
+
+            column_1_x.append(
+                    sg.Combo(datelists[0], size=(5, 1), font=('Arial Bold', 10), default_value = tereignis_list_tage_ende[i], expand_x=False, enable_events=True, readonly=False, key=("input_tereignis_tage_ende", i)))
+
+            column_1_x.append(
+                    sg.Combo(datelists[1], size=(5, 1), font=('Arial Bold', 10), default_value = tereignis_list_monate_ende[i], expand_x=False, enable_events=True, readonly=False, key=("input_tereignis_monate_ende", i)))
+            
+            column_1_x.append(
+                    sg.Combo(datelists[2], size=(10, 1), font=('Arial Bold', 10), default_value = tereignis_list_jahre_ende[i], expand_x=False, enable_events=True, readonly=False, key=("input_tereignis_jahre_ende", i)))
             
             column_1_y.append(
                 sg.Button('', image_data=look_for_name_in_transcript_button,
@@ -1546,6 +1915,148 @@ class ui_correction():
 
         for j in range(len(tereignis_list_llm_original)):
             self.eventlist_tereignis_stop_file.append(('Stop_File_tereignis', j))
+
+        #Realisierungsdatum hinzufügen
+        datelists = self.make_day_month_year_lists()
+        #Ereignisse entpacken
+        try:
+            realisierung_tage = realisierung_datum_suggest[0]
+            realisierung_monate = realisierung_datum_suggest[1]
+            realisierung_jahre = realisierung_datum_suggest[2]
+            realisierung_zusatz = realisierung_datum_suggest[3]
+            realisierung_ende_tage = realisierung_datum_suggest[4]
+            realisierung_ende_monate = realisierung_datum_suggest[5]
+            realisierung_ende_jahre = realisierung_datum_suggest[6]
+            realisierung_ende_zusatz = realisierung_datum_suggest[7]
+            realisierung_datum_kontext = realisierung_datum_suggest[8]
+        except IndexError:
+            realisierung_tage = None
+            realisierung_monate = None
+            realisierung_jahre = None
+            realisierung_zusatz = None
+            realisierung_ende_tage = None
+            realisierung_ende_monate = None
+            realisierung_ende_jahre = None
+            realisierung_ende_zusatz = None
+            realisierung_datum_kontext = None
+
+        self.final_input_is_original_realisierung_datum = None
+
+        #Main Ereignis
+        column_1.append([sg.Text('Realisierung Datum korrigieren', pad=(5, (50, 10)), background_color = 'black', font=('Arial Bold', 20))])
+        column_realdatum = []
+        
+        column_1_x = []
+        column_1_y = []
+
+        column_1_x.append(
+            sg.B(sg.SYMBOL_X, border_width=0, button_color=(sg.theme_text_color(), sg.theme_background_color()), k=('-DEL-_realdatum'), tooltip='Delete this item'))
+
+        column_1_x.append(
+            sg.Combo([None, 'circa', 'exakt', 'nach', 'vor'], size=(10, 1), font=('Arial Bold', 10), default_value = realisierung_zusatz, expand_x=False, enable_events=True, readonly=False, key=("input_realdatum_zusatz")))
+
+        column_1_x.append(
+            sg.Combo(datelists[0], size=(5, 1), font=('Arial Bold', 10), default_value = realisierung_tage, expand_x=False, enable_events=True, readonly=False, key=("input_realdatum_tage")))
+
+        column_1_x.append(
+            sg.Combo(datelists[1], size=(5, 1), font=('Arial Bold', 10), default_value = realisierung_monate, expand_x=False, enable_events=True, readonly=False, key=("input_realdatum_monate")))
+            
+        column_1_x.append(
+            sg.Combo(datelists[2], size=(10, 1), font=('Arial Bold', 10), default_value = realisierung_jahre, expand_x=False, enable_events=True, readonly=False, key=("input_realdatum_jahre")))
+            
+        column_1_x.append(sg.Text(' bis ', font=('Arial Bold', 10), background_color = 'black', expand_x=False, justification='left', key=('realdatum_text_bis')))
+
+        column_1_x.append(
+            sg.Combo([None, 'circa', 'exakt', 'nach', 'vor'], size=(10, 1), font=('Arial Bold', 10), default_value = realisierung_ende_zusatz, expand_x=False, enable_events=True, readonly=False, key=("realdatum_ende_zusatz")))
+
+        column_1_x.append(
+            sg.Combo(datelists[0], size=(5, 1), font=('Arial Bold', 10), default_value = realisierung_ende_tage, expand_x=False, enable_events=True, readonly=False, key=("realdatum_tage_ende")))
+
+        column_1_x.append(
+            sg.Combo(datelists[1], size=(5, 1), font=('Arial Bold', 10), default_value = realisierung_ende_monate, expand_x=False, enable_events=True, readonly=False, key=("realdatum_monate_ende")))
+            
+        column_1_x.append(
+            sg.Combo(datelists[2], size=(10, 1), font=('Arial Bold', 10), default_value = realisierung_ende_jahre, expand_x=False, enable_events=True, readonly=False, key=("realdatum_jahre_ende")))
+        
+        column_1_y.append(
+                sg.Multiline(default_text=realisierung_datum_kontext, size=(100, 3), write_only=True, key=('description_realdatum', i))
+                )
+
+
+        column_realdatum.append([sg.Column([column_1_x, column_1_y], pad = ((10, 0), (10, 0)), key = ('column_realdatum_x'), visible = True)])
+                                    
+
+        column_1.append([sg.Column(column_realdatum, pad = ((0, 0), (10, 0)), key = ('column_realdatum'), visible = True)])
+
+        #Realisierung Ort hinzufügen
+        column_1.append([sg.Text('Realisierung Ort korrigieren', pad=(5, (50, 10)), background_color = 'black', font=('Arial Bold', 20))])
+        column_realort = []
+
+        
+        for r in range(len(realisierung_ort_suggest)):
+            column_1_x = []
+            column_1_y = []
+            if realisierung_ort_suggest[r] != None:
+                #Get Timecodes for audioplayer
+                audio_starts = find_audio_timecodes().find_word_in_transcript(realisierung_ort_suggest[r], transcripts_list, start_sorted)
+                
+                column_1_x.append(
+                    sg.B(sg.SYMBOL_X, border_width=0, button_color=(sg.theme_text_color(), sg.theme_background_color()), k=('-DEL-_realort', r), tooltip='Delete this item'))
+                column_1_x.append(
+                        sg.Input(default_text = realisierung_ort_suggest[r], size=(25, 1), enable_events=True, readonly=False, visible = True, key=("realort", r)))
+                column_1_x.append(
+                        sg.Text(realisierung_ort_kontext[r], font=('Arial Bold', 10), expand_x=False, justification='left', key=('realisierung_kontext', r)))
+                column_1_y.append(
+                        sg.Button('', image_data=look_for_name_in_transcript_button,
+                        button_color=(sg.theme_background_color(),sg.theme_background_color()),
+                        border_width=0, visible = True, key=('look_for_name_in_transcript_realort', r)))
+                if len(audio_starts[0]) >0:
+                    column_1_y.append(
+                        sg.Combo(audio_starts[0], size=(10, 1), font=('Arial Bold', 10), default_value = audio_starts[0][0], expand_x=False, enable_events=True,  readonly=False, key=('audio_starter_realort', r)))
+                    column_1_y.append(
+                        sg.Button("Play", key=('Play_File_realort', r)))
+                    column_1_y.append(
+                        sg.Button("Stop", key=('Stop_File_realort', r)))
+                    
+                else:
+                    column_1_y.append(
+                        sg.Text('Not', font=('Arial Bold', 10), background_color = 'black', expand_x=False, justification='left', key=('audio_starter_realort', r)))
+                    column_1_y.append(
+                        sg.Text('Found', font=('Arial Bold', 10), background_color = 'black', expand_x=False, justification='left', key=('Play_File_realort', r)))
+                    column_1_y.append(
+                        sg.Text('in Audio Transcript', font=('Arial Bold', 10), background_color = 'black', expand_x=False, justification='left', key=('Stop_File_realort', r)))
+                
+            column_realort.append([sg.Column([column_1_x], pad = ((0, 0), (10, 0)), key = ('column_realort_x', r), visible = True)])
+            column_realort.append([sg.Column([column_1_y], pad = ((0, 0), (10, 0)), key = ('column_realort_y', r), visible = True)])
+
+        column_1.append([sg.Column(column_realort, pad = ((0, 0), (10, 0)), key = ('column_realort'), visible = True)])
+
+        column_1.append([sg.Button('', image_data=add_data_item_button,
+                    button_color=(sg.theme_background_color(),sg.theme_background_color()),
+                    border_width=0, pad = ((40, 0), (20, 0)), key=('add_data_realort'))])
+
+        self.eventlist_realort = [] 
+        
+        for i in range(len(realisierung_ort_suggest)):
+            self.eventlist_realort.append(('Play_File_realort', i))
+
+        self.eventlist_realort_stop_file = []       
+
+        for j in range(len(realisierung_ort_suggest)):
+            self.eventlist_realort_stop_file.append(('Stop_File_realort', j))
+        
+        #Realisierung Typ hinzufügen
+        column_1.append([sg.Text('Realisierung Typ korrigieren', pad=(5, (50, 10)), background_color = 'black', font=('Arial Bold', 20))])
+        column_realtyp = []
+        
+        column_1_x = []
+        list_realtyp_auswahl = ['None', 'unbekannt', 'Mitschnitt / Sendemitschnitt', 'Studioproduktion', 'Live-Aufnahme', 'Live mit Beifall', 'Live ohne Beifall']
+        column_1_x.append(
+            sg.Combo(list_realtyp_auswahl, size=(25, 1), font=('Arial Bold', 10), default_value = realisierung_typ_suggest, expand_x=False, enable_events=True,  readonly=False, key=('realtyp')))
+        
+        column_realtyp.append([sg.Column([column_1_x], pad = ((0, 0), (10, 0)), key = ('column_realtyp_x'), visible = True)])
+                                    
+        column_1.append([sg.Column(column_realtyp, pad = ((0, 0), (10, 0)), key = ('column_realtyp'), visible = True)])
 
         #Sprachen hinzufügen
         
@@ -1820,7 +2331,7 @@ class ui_correction():
         #Genre bearbeiten
         list_genre = ['Wort', 'Musik', 'Wort / Musik']
         column_1.append([sg.Text('Genre korrigieren', pad=(5, (50, 10)), background_color = 'black', font=('Arial Bold', 20))])
-        column_1.append([sg.B(sg.SYMBOL_X, border_width=0, button_color=(sg.theme_text_color(), sg.theme_background_color()), k=('-DEL-_genre', i), tooltip='Delete this item'),
+        column_1.append([
                 sg.Combo(list(list_genre), size=(25, 1), font=('Arial Bold', 10), default_value = genre_suggest, expand_x=False, enable_events=True,  readonly=False, key=('combo_genre'))])
         
         #Konf-Audio-Setting that could not entirely be automated
@@ -1834,8 +2345,7 @@ class ui_correction():
 
         column_1.append([sg.Text('Audioeigenschaften Audiofile korrigieren', pad=(5, (50, 10)), background_color = 'black', font=('Arial Bold', 20))])
         column_1.append(
-            [sg.B(sg.SYMBOL_X, border_width=0, button_color=(sg.theme_text_color(), sg.theme_background_color()), k=('-DEL-_audio_eig', i), tooltip='Delete this item'),
-            sg.Combo(list(list_langbez), size=(25, 1), font=('Arial Bold', 10), default_value = audioton_suggest, expand_x=False, enable_events=True,  readonly=False, key=('combo_audioton'))])
+            [sg.Combo(list(list_langbez), size=(25, 1), font=('Arial Bold', 10), default_value = audioton_suggest, expand_x=False, enable_events=True,  readonly=False, key=('combo_audioton'))])
 
         #Lese- und Abspielgeschwindigkeit bearbeiten
         column_1.append([sg.Text('Lese- und Abspielgeschwindigkeit eintragen (Nicht KI generiert)', pad=(5, (50, 10)), background_color = 'black', font=('Arial Bold', 20))])
@@ -1861,16 +2371,41 @@ class ui_correction():
         #column_1.append([sg.Column([column_player3], pad = ((0, 0), (10, 0)), key = ('column_search_player_1'), visible = True)])
         
         #Add to HFDB Buttons   
-        column_1.append([sg.Button("In HFDB übernehmen", key='-OK-'), sg.Button("Nicht in HFDB übernehmen", key='hfdb_nein'), sg.Button("Prozess abbrechen", key='Cancel')])
-        list_lines.append([sg.Column(column_1, scrollable=True, expand_x=True, expand_y=True)])    
+        column_1.append([
+            sg.Button("In HFDB übernehmen", key='-OK-', size=(20, 2), button_color=('white', 'green')),
+            sg.Button("Nicht in HFDB übernehmen", key='hfdb_nein', size=(20, 2), button_color=('white', 'orange')),
+            sg.Button("Prozess abbrechen", key='Cancel', size=(20, 2), button_color=('white', 'red'))
+        ])
         
-        layout = list_lines
+        list_lines.append([sg.Column(column_1, scrollable=False, expand_x=True, expand_y=True)])
+        list_master.append([sg.Column(list_lines, scrollable=True, expand_x=True, expand_y=True, key='column_1')])
+        #Add to HFDB Buttons   
+        list_buttons = []
+        list_buttons.append([
+            sg.Button("In HFDB übernehmen", key='-OK-', size=(20, 2), button_color=('white', 'green')),
+            sg.Button("Nicht in HFDB übernehmen", key='hfdb_nein', size=(20, 2), button_color=('white', 'orange')),
+            sg.Button("Prozess abbrechen", key='Cancel', size=(20, 2), button_color=('white', 'red'))
+        ])
+        list_master.append([sg.Column(list_buttons, scrollable=False, expand_x=True, expand_y=True)])
+        layout = list_master
         print(layout)
+    
+        """# Add to HFDB Buttons
+        button_layout = [
+            sg.Button("In HFDB übernehmen", key='-OK-', size=(20, 2), button_color=('white', 'green')),
+            sg.Button("Nicht in HFDB übernehmen", key='hfdb_nein', size=(20, 2), button_color=('white', 'orange')),
+            sg.Button("Prozess abbrechen", key='Cancel', size=(20, 2), button_color=('white', 'red'))
+        ]
+        list_lines.append([sg.Column(column_1, scrollable=True, expand_x=True, expand_y=True)])
+        list_lines.append([sg.Column([button_layout], justification='center', element_justification='center', pad=(0, 20))])
+
+        layout = list_lines
+        print(layout)"""
 
         # Create the Window
         return (sg.Window('AK Daten Korrekturfenster', layout, size=(1100, 1000), resizable=True, finalize = True), audioplayer1, audioplayer2)
 
-    def ak_correction_menu(self, transcripts_list, start_sorted, input_list_urheber, description_list_urheber, roles_found_urheber, reference_roles_list_urheber, ndb_urheber_data, input_list_mitwirkende, description_list_mitwirkende, roles_found_mitwirkende, reference_roles_list_mitwirkende, ndb_mitwirkende_data, text_input_titel, zusammenfassung, input_list_tpers, description_list_tpers, ndb_thema_persons_suggest, input_list_torte, description_list_torte, torte_list_llm_original, tinst_suggest_bundle, tereignis_suggest_bundle, audiofiles_path, audiofile, original_file, gattungen_suggest, genre_suggest, sprachen_suggest_original, sprachen_suggest_ndb, metatags_suggest, deskriptoren_suggest, audioraum_darstellung_global_suggest):
+    def ak_correction_menu(self, transcripts_list, start_sorted, input_list_urheber, description_list_urheber, roles_found_urheber, reference_roles_list_urheber, ndb_urheber_data, input_list_mitwirkende, description_list_mitwirkende, roles_found_mitwirkende, reference_roles_list_mitwirkende, ndb_mitwirkende_data, text_input_titel, zusammenfassung, input_list_tpers, description_list_tpers, ndb_thema_persons_suggest, input_list_torte, description_list_torte, torte_list_llm_original, tinst_suggest_bundle, tereignis_suggest_bundle, audiofiles_path, audiofile, original_file, gattungen_suggest, genre_suggest, sprachen_suggest_original, sprachen_suggest_ndb, metatags_suggest, deskriptoren_suggest, audioraum_darstellung_global_suggest, realisierung_datum_suggest, realisierung_orte_suggest, realisierung_ort_kontext, realisierung_typ_suggest):
         """Wrapper for activating and "playing" UI-AK-Menue and handling interactive elements. Has same inputs as main_window and passes them through to it
         
         Main Window Element which contains the standard elements shown when UI-Window appears. Real appearence is flexible and depends on the amount and kind of input data but general structure is always the same.
@@ -1908,6 +2443,9 @@ class ui_correction():
             metatags_suggest(list): List of suggested Metatags
             deskriptoren_suggest(list): List of suggested Deskriptoren
             audioraum_darstellung_global_suggest(json_like): User-Pre-defined suggestion for Audioraumdarstellung
+            realisierung_datum_suggest(json_like): LLM-Suggestions for Realisierungsdatum
+            realisierung_orte_suggest(list): Suggestions forRealisierung-Orte
+            realisierung_ort_kontext(list): Context for Realisierung Orte Suggestions from transcript
 
         Returns:
             list_final_entities_mitwirkende(list): List of Mitwirkende data after correction through interface.
@@ -1925,6 +2463,8 @@ class ui_correction():
             list_final_entities_sprachen(list): List of Sprachen data after correction through interface by user
             list_final_entities_desk(list): List of Deskriptoren data after correction through interface by user
             list_final_entities_tags(list): List of (Meta-)Tags data after correction through interface by user
+            list_final_entities_realisierungsdatum(list): List of contents of Realisierungsdatum
+            list_final_entities_realisierung_orte(str): String with Realisierung Orte
         
         """
         #List of numbers of lines that are flagged for erase so details not kept for ak creation
@@ -1939,8 +2479,10 @@ class ui_correction():
         erase_flagged_sprachen = []
         erase_flagged_desk = []
         erase_flagged_tags = []
+        erase_flagged_realdatum = False
+        erase_flagged_realorte = []
 
-        window1 = self.main_window(transcripts_list, start_sorted, input_list_urheber, description_list_urheber, roles_found_urheber, reference_roles_list_urheber, ndb_urheber_data, input_list_mitwirkende, description_list_mitwirkende, roles_found_mitwirkende, reference_roles_list_mitwirkende, ndb_mitwirkende_data, text_input_titel, zusammenfassung, input_list_tpers, description_list_tpers, ndb_thema_persons_suggest, input_list_torte, description_list_torte, torte_list_llm_original, tinst_suggest_bundle, tereignis_suggest_bundle,audiofiles_path, audiofile, original_file, gattungen_suggest, genre_suggest, sprachen_suggest_original, sprachen_suggest_ndb, metatags_suggest, deskriptoren_suggest, audioraum_darstellung_global_suggest)
+        window1 = self.main_window(transcripts_list, start_sorted, input_list_urheber, description_list_urheber, roles_found_urheber, reference_roles_list_urheber, ndb_urheber_data, input_list_mitwirkende, description_list_mitwirkende, roles_found_mitwirkende, reference_roles_list_mitwirkende, ndb_mitwirkende_data, text_input_titel, zusammenfassung, input_list_tpers, description_list_tpers, ndb_thema_persons_suggest, input_list_torte, description_list_torte, torte_list_llm_original, tinst_suggest_bundle, tereignis_suggest_bundle,audiofiles_path, audiofile, original_file, gattungen_suggest, genre_suggest, sprachen_suggest_original, sprachen_suggest_ndb, metatags_suggest, deskriptoren_suggest, audioraum_darstellung_global_suggest, realisierung_datum_suggest, realisierung_orte_suggest, realisierung_ort_kontext, realisierung_typ_suggest)
         audioplayer1 = window1[1]
         audioplayer2 = window1[2]
         window = window1[0]
@@ -1955,13 +2497,18 @@ class ui_correction():
         tereignis_list_tage = tereignis_suggest_bundle[2]
         tereignis_list_monate = tereignis_suggest_bundle[3]
         tereignis_list_jahre = tereignis_suggest_bundle[4]
+        tereignis_list_tage_ende = tereignis_suggest_bundle[5]
+        tereignis_list_monate_ende = tereignis_suggest_bundle[6]
+        tereignis_list_jahre_ende = tereignis_suggest_bundle[7]
         
         # Event Loop to process "events" and get the "values" of the inputs
         while True:
             
-            window, event, values = sg.read_all_windows()
+            window, event, values = sg.read_all_windows(timeout = 10000000)
             popup_open_search = False
-            popup_open_karin = False
+            if event == sg.WIN_CLOSED or event == "Cancel":
+                window.close()
+                break
             if event == '-OK-': 
                 #event_popup = 'close_me'
                 values_passed = values
@@ -1969,13 +2516,13 @@ class ui_correction():
                 try:    
                     window.close()
                 except:
-                    ()
+                    ()            
                 try:
-                    window_popup.close()
+                    window_popup_karin.close()
                 except:
                     ()
                 try:
-                    window_popup_karin.close()
+                    window_popup_audioplayer.close()
                 except:
                     ()
                 break
@@ -1986,7 +2533,7 @@ class ui_correction():
                 window.extend_layout(window['column_mitwirk'], [new_columns[1]])
                 input_list_mitwirkende.append('None')
                 description_list_mitwirkende.append('None')
-                ndb_mitwirkende_data.append('')
+                ndb_mitwirkende_data.append(['','','','','','','',''])
                 self.current_input.append('Freitext')
                 self.alt_input.append(False)
                 self.orig_input.append('Freitext')
@@ -1994,6 +2541,8 @@ class ui_correction():
                 self.hyperlink_list_mitwirkende.append(None)  
                 self.current_hyperlink_list_mitwirkende.append(None)
                 self.current_hyperlink_mitwirkende.append(None)
+                window.refresh()
+                window['column_1'].contents_changed()
 
             if event == 'add_data_urheber':
                 new_columns = self.empty_column_urheber(input_list_urheber, reference_roles_list_urheber)
@@ -2001,7 +2550,7 @@ class ui_correction():
                 window.extend_layout(window['column_urheber'], [new_columns[1]])
                 input_list_urheber.append('None')
                 description_list_urheber.append('None')
-                ndb_urheber_data.append('')
+                ndb_urheber_data.append(['','','','','','','',''])
                 self.current_input_urheber.append('Freitext')
                 self.alt_input_urheber.append(False)
                 self.orig_input_urheber.append('Freitext')
@@ -2009,6 +2558,8 @@ class ui_correction():
                 self.hyperlink_list_urheber.append(None)  
                 self.current_hyperlink_list_urheber.append(None)
                 self.current_hyperlink_urheber.append(None)
+                window.refresh()
+                window['column_1'].contents_changed()
                 
             if event == 'add_data_tpers':
                 new_columns = self.empty_column_tpers(input_list_tpers)
@@ -2016,7 +2567,7 @@ class ui_correction():
                 window.extend_layout(window['column_tpers'], [new_columns[1]])
                 input_list_tpers.append('None')
                 description_list_tpers.append('None')
-                ndb_thema_persons_suggest.append('')
+                ndb_thema_persons_suggest.append(['','','','','','','',''])
                 self.current_input_tpers.append('Freitext')
                 self.alt_input_tpers.append(False)
                 self.orig_input_tpers.append('Freitext')
@@ -2024,6 +2575,8 @@ class ui_correction():
                 self.hyperlink_list_tpers.append(None)  
                 self.current_hyperlink_list_tpers.append(None)
                 self.current_hyperlink_tpers.append(None)  
+                window.refresh()
+                window['column_1'].contents_changed()
 
             if event == 'add_data_torte':
                 new_columns = self.empty_column_torte(torte_list_llm_original)
@@ -2039,6 +2592,8 @@ class ui_correction():
                 self.hyperlink_list_torte.append(None)  
                 self.current_hyperlink_list_torte.append(None)
                 self.current_hyperlink_torte.append(None)  
+                window.refresh()
+                window['column_1'].contents_changed()
 
             if event == 'add_data_tinst':
                 new_columns = self.empty_column_tinst(tinst_list_llm_original)
@@ -2054,6 +2609,8 @@ class ui_correction():
                 self.hyperlink_list_tinst.append(None)  
                 self.current_hyperlink_list_tinst.append(None)
                 self.current_hyperlink_tinst.append(None)
+                window.refresh()
+                window['column_1'].contents_changed()
 
             if event == 'add_data_tereignis':
                 new_columns = self.empty_column_tereignis(tereignis_list_llm_original)
@@ -2064,7 +2621,12 @@ class ui_correction():
                 tereignis_list_tage.append(1)
                 tereignis_list_monate.append(1)
                 tereignis_list_jahre.append(1950)
+                tereignis_list_tage_ende.append(1)
+                tereignis_list_monate_ende.append(1)
+                tereignis_list_jahre_ende.append(1950)
                 self.final_input_is_original_tereignis.append(True) 
+                window.refresh()
+                window['column_1'].contents_changed()
 
             if event == 'add_data_sprachen':
                 new_columns = self.empty_column_sprachen(sprachen_suggest_original)
@@ -2076,6 +2638,16 @@ class ui_correction():
                 self.alt_input_sprachen.append(False)
                 self.orig_input_sprachen.append('Freitext')
                 self.final_input_is_original_sprachen.append(True) 
+                window.refresh()
+                window['column_1'].contents_changed()
+
+            if event == 'add_data_realort':
+                new_columns = self.empty_column_realort(realisierung_orte_suggest)
+                window.extend_layout(window['column_realort'], [new_columns[0]])
+                window.extend_layout(window['column_realort'], [new_columns[1]])
+                realisierung_orte_suggest.append('')
+                window.refresh()
+                window['column_1'].contents_changed()
 
             if event == 'add_data_desk':
                 new_columns = self.empty_column_desk(deskriptoren_suggest)
@@ -2088,6 +2660,8 @@ class ui_correction():
                 self.final_input_is_original_desk.append(True)
                 self.text_input_transcr_search_desk.append('')
                 self.deskriptoren_all_data.append(None)
+                window.refresh()
+                window['column_1'].contents_changed()
 
             if event == 'add_data_tags':
                 new_columns = self.empty_column_tags(metatags_suggest)
@@ -2095,12 +2669,16 @@ class ui_correction():
                 window.extend_layout(window['column_tags'], [new_columns[1]])
                 metatags_suggest.append('None')
                 self.final_input_is_original_tags.append(True)   
+                window.refresh()
+                window['column_1'].contents_changed()
 
             if event == 'add_data_gattungen':
                 gattungen_list = self.list_gattungen
                 new_columns = self.empty_column_gattung(gattungen_suggest, gattungen_list)
                 window.extend_layout(window['column_gattung'], [new_columns])
                 gattungen_suggest.append('None')
+                window.refresh()
+                window['column_1'].contents_changed()
 
             #Verschieben von Personen in andere Personenkategorie
             #Verschieben von Mitwirkende zu Urheber
@@ -2147,28 +2725,34 @@ class ui_correction():
                 #Erase Data from Mitwirkende
                 window[('-DEL-_mitwirkende', event[1])].update(visible=False)
                 window[('input_mitwirkende', event[1])].update(visible=False)
+                window[('input_mitwirkende_vorname', event[1])].update(visible=False)
+                window[('input_mitwirkende_nachname', event[1])].update(visible=False)
                 window[('combo_mitwirkende', event[1])].update(visible=False)
                 window[('description_mitwirkende', event[1])].update(visible=False)
                 window[('Play_File_mitwirkende',event[1])].update(visible=False)
                 window[('Stop_File_mitwirkende', event[1])].update(visible=False)
                 window[('audio_starter_mitwirkende', event[1])].update(visible=False)
-                window[(f'input_mitwirkende_alt', event[1])].update(visible=False)
                 window[(f'refresh_ndb_mitwirkende', event[1])].update(visible=False)
                 window[('change_input_type_mitwirk', event[1])].update(visible = False)
                 window[('URL_mitwirkende', event[1])].update(visible = False)
                 window[('verschieb_mitwirkende_urheber', event[1])].update(visible = False)
                 window[('verschieb_mitwirkende_themapers', event[1])].update(visible = False)
+                window[("bemerkung_mitwirkende_text", event[1])].update(visible = False)
+                window[("bemerkung_mitwirkende", event[1])].update(visible = False)
+                
                 try:
                     window[('look_for_name_in_transcript', event[1])].update(visible = False)
                 except:
                     pass
                 
-                erase_flagged_mitwirkende.append(int(event[1]))                     
+                erase_flagged_mitwirkende.append(int(event[1]))   
+                window.refresh()
+                window['column_1'].contents_changed()                  
 
             #Verschieben von Mitwirkende zu themaPersonen
             if event != None and event[0] == 'verschieb_mitwirkende_themapers':
                 input_list_tpers.append(input_list_mitwirkende[event[1]])
-                ndb_thema_persons_suggest.append(ndb_mitwirkende_data[event[1]])
+                (ndb_mitwirkende_data[event[1]])
                 self.hyperlink_list_tpers.append(ndb_mitwirkende_data[event[1]][5])
                 description_list_tpers.append(description_list_mitwirkende[event[1]])
                 self.alt_input_tpers.append(self.alt_input[event[1]])
@@ -2206,24 +2790,29 @@ class ui_correction():
                 #Erase Data from Mitwirkende
                 window[('-DEL-_mitwirkende', event[1])].update(visible=False)
                 window[('input_mitwirkende', event[1])].update(visible=False)
+                window[('input_mitwirkende_vorname', event[1])].update(visible=False)
+                window[('input_mitwirkende_nachname', event[1])].update(visible=False)
                 window[('combo_mitwirkende', event[1])].update(visible=False)
                 window[('description_mitwirkende', event[1])].update(visible=False)
                 window[('Play_File_mitwirkende',event[1])].update(visible=False)
                 window[('Stop_File_mitwirkende', event[1])].update(visible=False)
                 window[('audio_starter_mitwirkende', event[1])].update(visible=False)
-                window[(f'input_mitwirkende_alt', event[1])].update(visible=False)
                 window[(f'refresh_ndb_mitwirkende', event[1])].update(visible=False)
                 window[('change_input_type_mitwirk', event[1])].update(visible = False)
                 window[('URL_mitwirkende', event[1])].update(visible = False)
                 window[('verschieb_mitwirkende_urheber', event[1])].update(visible = False)
                 window[('verschieb_mitwirkende_themapers', event[1])].update(visible = False)
                 window[('verschieb_mitwirkende_themapers', event[1])].update(visible = False)
+                window[("bemerkung_mitwirkende_text", event[1])].update(visible = False)
+                window[("bemerkung_mitwirkende", event[1])].update(visible = False)
                 try:
                     window[('look_for_name_in_transcript', event[1])].update(visible = False)
                 except:
                     pass
                 
                 erase_flagged_mitwirkende.append(int(event[1])) 
+                window.refresh()
+                window['column_1'].contents_changed()
 
             #Verschieben von themaPersonen zu Mitwirkende
             if event != None and event[0] == 'verschieb_themapers_mitwirkende':
@@ -2269,12 +2858,13 @@ class ui_correction():
                 #Erase Data from ThemaPersonen
                 window[('-DEL-_tpers', event[1])].update(visible=False)
                 window[('input_tpers', event[1])].update(visible=False)
-                
+                window[('input_tpers_vorname', event[1])].update(visible=False)
+                window[('input_tpers_nachname', event[1])].update(visible=False)
                 window[('description_tpers', event[1])].update(visible=False)
                 window[('Play_File_tpers',event[1])].update(visible=False)
                 window[('Stop_File_tpers', event[1])].update(visible=False)
                 window[('audio_starter_tpers', event[1])].update(visible=False)
-                window[(f'input_tpers_alt', event[1])].update(visible=False)
+               
                 window[(f'refresh_ndb_tpers', event[1])].update(visible=False)
                 window[('change_input_type_tpers', event[1])].update(visible = False)
                 window[('URL_tpers', event[1])].update(visible = False)
@@ -2286,6 +2876,8 @@ class ui_correction():
                     pass
                 
                 erase_flagged_tpers.append(int(event[1])) 
+                window.refresh()
+                window['column_1'].contents_changed()
 
             #Verschieben von ThemaPersonen zu Urheber
             if event != None and event[0] == 'verschieb_themapers_urheber':
@@ -2332,12 +2924,12 @@ class ui_correction():
                 #Erase Data from Mitwirkende
                 window[('-DEL-_tpers', event[1])].update(visible=False)
                 window[('input_tpers', event[1])].update(visible=False)
-                
+                window[('input_tpers_vorname', event[1])].update(visible=False)
+                window[('input_tpers_nachname', event[1])].update(visible=False)
                 window[('description_tpers', event[1])].update(visible=False)
                 window[('Play_File_tpers',event[1])].update(visible=False)
                 window[('Stop_File_tpers', event[1])].update(visible=False)
                 window[('audio_starter_tpers', event[1])].update(visible=False)
-                window[(f'input_tpers_alt', event[1])].update(visible=False)
                 window[(f'refresh_ndb_tpers', event[1])].update(visible=False)
                 window[('change_input_type_tpers', event[1])].update(visible = False)
                 window[('URL_tpers', event[1])].update(visible = False)
@@ -2349,6 +2941,8 @@ class ui_correction():
                     pass
                 
                 erase_flagged_tpers.append(int(event[1]))    
+                window.refresh()
+                window['column_1'].contents_changed()
 
             #Verschieben von Urheber zu Mitwirkende
             if event != None and event[0] == 'verschieb_urheber_mitwirkende':
@@ -2398,7 +2992,9 @@ class ui_correction():
                 window[('Play_File_urheber',event[1])].update(visible=False)
                 window[('Stop_File_urheber', event[1])].update(visible=False)
                 window[('audio_starter_urheber', event[1])].update(visible=False)
-                window[(f'input_urheber_alt', event[1])].update(visible=False)
+                window[(f'input_urheber', event[1])].update(visible=False)
+                window[(f'input_urheber_vorname', event[1])].update(visible=False)
+                window[(f'input_urheber_nachname', event[1])].update(visible=False)
                 window[(f'refresh_ndb_urheber', event[1])].update(visible=False)
                 window[('change_input_type_urheber', event[1])].update(visible = False)
                 window[('URL_urheber', event[1])].update(visible = False)
@@ -2410,6 +3006,8 @@ class ui_correction():
                     pass
                 
                 erase_flagged_urheber.append(int(event[1])) 
+                window.refresh()
+                window['column_1'].contents_changed()
 
             #Verschieben von Urheber zu themaPersonen
             if event != None and event[0] == 'verschieb_urheber_themapers':
@@ -2453,12 +3051,13 @@ class ui_correction():
                 #Erase Data from Urheber
                 window[('-DEL-_urheber', event[1])].update(visible=False)
                 window[('input_urheber', event[1])].update(visible=False)
+                window[('input_urheber_vorname', event[1])].update(visible=False)
+                window[('input_urheber_nachname', event[1])].update(visible=False)
                 window[('combo_urheber', event[1])].update(visible=False)
                 window[('description_urheber', event[1])].update(visible=False)
                 window[('Play_File_urheber',event[1])].update(visible=False)
                 window[('Stop_File_urheber', event[1])].update(visible=False)
                 window[('audio_starter_urheber', event[1])].update(visible=False)
-                window[(f'input_urheber_alt', event[1])].update(visible=False)
                 window[(f'refresh_ndb_urheber', event[1])].update(visible=False)
                 window[('change_input_type_urheber', event[1])].update(visible = False)
                 window[('URL_urheber', event[1])].update(visible = False)
@@ -2469,11 +3068,13 @@ class ui_correction():
                 except:
                     pass
                 erase_flagged_urheber.append(int(event[1])) 
+                window.refresh()
+                window['column_1'].contents_changed()
 
 
             #Reading and Changing Hyperlinks:
             #Mitwirkende
-            if event != None and (event[0] == "input_mitwirkende" or event[0] == "input_mitwirkende_alt"):
+            if event != None and event[0] == "input_mitwirkende":
                 
                 if self.current_input[event[1]] == 'Dropdown' and event[0] == "input_mitwirkende":
                     current_choice_mitwirkender = values[("input_mitwirkende", event[1])]
@@ -2486,20 +3087,8 @@ class ui_correction():
                            
                             window[('URL_mitwirkende', event[1])].update(value = new_hyperlink)
                             break
-                elif self.current_input[event[1]] == 'Dropdown' and event[0] == "input_mitwirkende_alt":
-                    current_choice_mitwirkender = values[("input_mitwirkende_alt", event[1])]
-                    new_hyperlink = False
-                    
-                    for n in range(len(self.current_hyperlink_list_mitwirkende[event[1]])):
-                        if self.current_hyperlink_list_mitwirkende[event[1]][n] in current_choice_mitwirkender:
-                            new_hyperlink = self.current_hyperlink_list_mitwirkende[event[1]][n]
-                            self.current_hyperlink_mitwirkende[event[1]] = new_hyperlink
-                            
-                            window[('URL_mitwirkende', event[1])].update(value = new_hyperlink)
-                            break
-
             #Urheber
-            if event != None and (event[0] == "input_urheber" or event[0] == "input_urheber_alt"):
+            if event != None and event[0] == "input_urheber":
                 print('DEBUG Add Urheber Input:', self.current_input_urheber)
                 print('DEBUG Add Urheber Input:', event)
                 
@@ -2514,20 +3103,9 @@ class ui_correction():
                            
                             window[('URL_urheber', event[1])].update(value = new_hyperlink)
                             break
-                elif self.current_input_urheber[event[1]] == 'Dropdown' and event[0] == "input_urheber_alt":
-                    current_choice_urheber = values[("input_urheber_alt", event[1])]
-                    new_hyperlink = False
-                    
-                    for n in range(len(self.current_hyperlink_list_urheber[event[1]])):
-                        if self.current_hyperlink_list_urheber[event[1]][n] in current_choice_urheber:
-                            new_hyperlink = self.current_hyperlink_list_urheber[event[1]][n]
-                            self.current_hyperlink_urheber[event[1]] = new_hyperlink
-                            
-                            window[('URL_urheber', event[1])].update(value = new_hyperlink)
-                            break
 
             #ThemaPerson
-            if event != None and (event[0] == "input_tpers" or event[0] == "input_tpers_alt"):
+            if event != None and event[0] == "input_tpers":
                 print('DEBUG Add themaPers Input:', self.current_input_tpers)
                 print('DEBUG Add themaPers Input:', event)
 
@@ -2540,17 +3118,6 @@ class ui_correction():
                             new_hyperlink = self.current_hyperlink_list_tpers[event[1]][n]
                             self.current_hyperlink_tpers[event[1]] = new_hyperlink
                            
-                            window[('URL_tpers', event[1])].update(value = new_hyperlink)
-                            break
-                elif self.current_input_tpers[event[1]] == 'Dropdown' and event[0] == "input_tpers_alt":
-                    current_choice_tpers = values[("input_tpers_alt", event[1])]
-                    new_hyperlink = False
-                    
-                    for n in range(len(self.current_hyperlink_list_tpers[event[1]])):
-                        if self.current_hyperlink_list_tpers[event[1]][n] in current_choice_tpers:
-                            new_hyperlink = self.current_hyperlink_list_tpers[event[1]][n]
-                            self.current_hyperlink_tpers[event[1]] = new_hyperlink
-                            
                             window[('URL_tpers', event[1])].update(value = new_hyperlink)
                             break
             
@@ -2710,7 +3277,9 @@ class ui_correction():
                     window[('Stop_File_desk', event[1])].update(visible=False)
                
             if event != None and event[0] == 'look_for_name_in_transcript': #Button for "Mitwirkende"
-                values_name = values[("input_mitwirkende", event[1])]
+                values_vorname = values[("input_mitwirkende_vorname", event[1])]
+                values_nachname = values[("input_mitwirkende_nachname", event[1])]
+                values_name = ' '.join([values_vorname, values_nachname])
                 audio_starts = find_audio_timecodes().find_word_in_transcript(values_name, transcripts_list, start_sorted)
                 if len(audio_starts[0]) >0:
                     
@@ -2766,6 +3335,29 @@ class ui_correction():
                     window[('Play_File_tereignis', event[1])].update(visible=False)
                     window[('Stop_File_tereignis', event[1])].update(visible=False)
 
+            
+            if event != None and event[0] == 'look_for_name_in_transcript_realort': #Button for "Tags"
+                values_name = values[("realort", event[1])]
+                audio_starts = find_audio_timecodes().find_word_in_transcript(values_name, transcripts_list, start_sorted)
+                if len(audio_starts[0]) >0:
+                    try:
+                        window[('audio_starter_realort', event[1])].update(values = audio_starts[0], value = audio_starts[0][0], visible=True)
+                        
+                        window[('Play_File_realort', event[1])].update(visible=True)
+                        window[('Stop_File_realort', event[1])].update(visible=True)
+                    except TypeError:
+                        window[('audio_starter_realort', event[1])].update(values = audio_starts[0], value = audio_starts[0][0], visible=True)
+                        
+                        window[('Play_File_realort', event[1])].update(visible=True)
+                        window[('Stop_File_realort', event[1])].update(visible=True)
+                    if ('Play_File_realort', event[1]) not in self.eventlist_tereignis:
+                        self.eventlist_realort.append(('Play_File_realort', event[1]))
+                        self.eventlist_realort_stop_file.append(('Stop_File_realort', event[1]))
+                else:
+                    window[('audio_starter_realort', event[1])].update(visible=False)
+                    window[('Play_File_realort', event[1])].update(visible=False)
+                    window[('Stop_File_realort', event[1])].update(visible=False)
+
             if event != None and event[0] == 'look_for_name_in_transcript_tags': #Button for "Tags"
                 values_name = values[("input_tags", event[1])]
                 audio_starts = find_audio_timecodes().find_word_in_transcript(values_name, transcripts_list, start_sorted)
@@ -2781,8 +3373,8 @@ class ui_correction():
                         window[('Play_File_tags', event[1])].update(visible=True)
                         window[('Stop_File_tags', event[1])].update(visible=True)
                     if ('Play_File_tags', event[1]) not in self.eventlist_tereignis:
-                        self.eventlist_tags.append(('Play_File_tags', event[1]))
-                        self.eventlist_tags_stop_file.append(('Stop_File_tags', event[1]))
+                        self.eventlist_realort.append(('Play_File_tags', event[1]))
+                        self.eventlist_realort_stop_file.append(('Stop_File_tags', event[1]))
                 else:
                     window[('audio_starter_tags', event[1])].update(visible=False)
                     window[('Play_File_tags', event[1])].update(visible=False)
@@ -2815,61 +3407,73 @@ class ui_correction():
                 print(event[1])
                 window[('-DEL-_mitwirkende', event[1])].update(visible=False)
                 window[('input_mitwirkende', event[1])].update(visible=False)
+                window[('input_mitwirkende_vorname', event[1])].update(visible=False)
+                window[('input_mitwirkende_nachname', event[1])].update(visible=False)
                 window[('combo_mitwirkende', event[1])].update(visible=False)
                 window[('description_mitwirkende', event[1])].update(visible=False)
                 window[('Play_File_mitwirkende',event[1])].update(visible=False)
                 window[('Stop_File_mitwirkende', event[1])].update(visible=False)
                 window[('audio_starter_mitwirkende', event[1])].update(visible=False)
-                window[(f'input_mitwirkende_alt', event[1])].update(visible=False)
                 window[(f'refresh_ndb_mitwirkende', event[1])].update(visible=False)
                 window[('change_input_type_mitwirk', event[1])].update(visible = False)
                 window[('URL_mitwirkende', event[1])].update(visible = False)
                 window[('verschieb_mitwirkende_urheber', event[1])].update(visible = False)
                 window[('verschieb_mitwirkende_themapers', event[1])].update(visible = False)
-                if event[1] >= self.mitwirkende_count_original:
-                    window[('look_for_name_in_transcript', event[1])].update(visible = False)
+                window[("bemerkung_mitwirkende_text", event[1])].update(visible = False)
+                window[("bemerkung_mitwirkende", event[1])].update(visible = False)
+                #if event[1] >= self.mitwirkende_count_original:
+                window[('look_for_name_in_transcript', event[1])].update(visible = False)
                 
                 
                 erase_flagged_mitwirkende.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
 
             elif event != None and event[0] == '-DEL-_urheber':
                 print(event[1])
                 window[('-DEL-_urheber', event[1])].update(visible=False)
                 window[('input_urheber', event[1])].update(visible=False)
+                window[('input_urheber_vorname', event[1])].update(visible=False)
+                window[('input_urheber_nachname', event[1])].update(visible=False)
                 window[('combo_urheber', event[1])].update(visible=False)
                 window[('description_urheber', event[1])].update(visible=False)
                 window[('Play_File_urheber',event[1])].update(visible=False)
                 window[('Stop_File_urheber', event[1])].update(visible=False)
                 window[('audio_starter_urheber', event[1])].update(visible=False)
-                window[(f'input_urheber_alt', event[1])].update(visible=False)
+                #window[(f'input_urheber_alt', event[1])].update(visible=False)
                 window[(f'refresh_ndb_urheber', event[1])].update(visible=False)
                 window[('change_input_type_urheber', event[1])].update(visible = False)
                 window[('URL_urheber', event[1])].update(visible = False)
                 window[('verschieb_urheber_mitwirkende', event[1])].update(visible = False)
                 window[('verschieb_urheber_themapers', event[1])].update(visible = False)
-                if event[1] >= self.urheber_count_original:
-                    window[('look_for_name_in_transcript_urheber', event[1])].update(visible = False)
+                #if event[1] >= self.urheber_count_original:
+                window[('look_for_name_in_transcript_urheber', event[1])].update(visible = False)
                 
                 
                 erase_flagged_urheber.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
             
             elif event != None and event[0] == '-DEL-_tpers':
                 print(event[1])
                 window[('-DEL-_tpers', event[1])].update(visible=False)
                 window[('input_tpers', event[1])].update(visible=False)
+                window[('input_tpers_vorname', event[1])].update(visible=False)
+                window[('input_tpers_nachname', event[1])].update(visible=False)
                 window[('description_tpers', event[1])].update(visible=False)
                 window[('Play_File_tpers', event[1])].update(visible=False)
                 window[('audio_starter_tpers', event[1])].update(visible=False)
                 window[('Stop_File_tpers', event[1])].update(visible=False)
-                window[(f'input_tpers_alt', event[1])].update(visible=False)
+                #window[(f'input_tpers_alt', event[1])].update(visible=False)
                 window[(f'refresh_ndb_tpers', event[1])].update(visible=False)
                 window[('URL_tpers', event[1])].update(visible = False)
                 window[('verschieb_themapers_urheber', event[1])].update(visible = False)
                 window[('verschieb_themapers_mitwirkende', event[1])].update(visible = False)
-                if event[1] >= self.tpers_count_original:
-                    window[('look_for_name_in_transcript_tpers', event[1])].update(visible = False)
+                window[('look_for_name_in_transcript_tpers', event[1])].update(visible = False)
                 window[('change_input_type_tpers', event[1])].update(visible = False)
                 erase_flagged_tpers.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
 
             elif event != None and event[0] == '-DEL-_torte':
                 print(event[1])
@@ -2882,11 +3486,13 @@ class ui_correction():
                 window[('input_torte_alt', event[1])].update(visible=False)
                 window[('refresh_ndb_torte', event[1])].update(visible=False)
                 window[('URL_torte', event[1])].update(visible = False)
-                if event[1] >= self.torte_count_original:
-                    window[('look_for_name_in_transcript_torte', event[1])].update(visible = False)
+                #if event[1] >= self.torte_count_original:
+                window[('look_for_name_in_transcript_torte', event[1])].update(visible = False)
                 
                 window[('change_input_type_torte', event[1])].update(visible = False)
                 erase_flagged_torte.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
             
             elif event != None and event[0] == '-DEL-_tinst':
                 print(event[1])
@@ -2899,11 +3505,13 @@ class ui_correction():
                 window[('input_tinst_alt', event[1])].update(visible=False)
                 window[('refresh_ndb_tinst', event[1])].update(visible=False)
                 window[('URL_tinst', event[1])].update(visible = False)
-                if event[1] >= self.tinst_count_original:
-                    window[('look_for_name_in_transcript_tinst', event[1])].update(visible = False)
+                #if event[1] >= self.tinst_count_original:
+                window[('look_for_name_in_transcript_tinst', event[1])].update(visible = False)
                 
                 window[('change_input_type_tinst', event[1])].update(visible = False)
                 erase_flagged_tinst.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
 
             elif event != None and event[0] == '-DEL-_tereignis':
                 print(event[1])
@@ -2914,11 +3522,17 @@ class ui_correction():
                 window[('input_tereignis_tage', event[1])].update(visible=False)
                 window[('input_tereignis_monate', event[1])].update(visible=False)
                 window[('input_tereignis_jahre', event[1])].update(visible=False)
+                window[('input_tereignis_tage_ende', event[1])].update(visible=False)
+                window[('input_tereignis_monate_ende', event[1])].update(visible=False)
+                window[('input_tereignis_jahre_ende', event[1])].update(visible=False)
                 window[('Play_File_tereignis', event[1])].update(visible=False)
                 window[('audio_starter_tereignis', event[1])].update(visible=False)
                 window[('Stop_File_tereignis', event[1])].update(visible=False)
+                window[('tereignis_datum_text_bis', event[1])].update(visible=False)
                 window[('look_for_name_in_transcript_tereignis', event[1])].update(visible = False)
                 erase_flagged_tereignis.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
 
             elif event != None and event[0] == '-DEL-_sprachen':
                 print(event[1])
@@ -2929,6 +3543,8 @@ class ui_correction():
                 
                 window[('change_input_type_sprachen', event[1])].update(visible = False)
                 erase_flagged_sprachen.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
 
             elif event != None and event[0] == '-DEL-_desk':
                 print(event[1])
@@ -2944,6 +3560,8 @@ class ui_correction():
                 window[('Play_File_desk', event[1])].update(visible = False)
                 window[('Stop_File_desk', event[1])].update(visible = False)
                 erase_flagged_desk.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
 
             elif event != None and event[0] == '-DEL-_tags':
                 print(event[1])
@@ -2954,48 +3572,84 @@ class ui_correction():
                 window[('Stop_File_tags', event[1])].update(visible=False)
                 window[('look_for_name_in_transcript_tags', event[1])].update(visible = False)
                 erase_flagged_tags.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
             
             elif event != None and event[0] == '-DEL-_gatt':
                 print(event[1])
                 window[('-DEL-_gatt', event[1])].update(visible=False)
                 window[('combo_gattungen', event[1])].update(visible=False)
                 erase_flagged_gatt.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
 
             elif event != None and event[0] == '-DEL-_genre':
                 print(event[1])
                 window[('-DEL-_genre', event[1])].update(visible=False)
                 window[('combo_genre', event[1])].update(visible=False)
                 erase_flagged_genre.append(int(event[1]))
+                window.refresh()
+                window['column_1'].contents_changed()
+
+            elif event != None and event == '-DEL-_realdatum':
+                
+                window[('-DEL-_realdatum')].update(visible=False)
+                window[('input_realdatum_tage')].update(visible=False)
+                window[('input_realdatum_monate')].update(visible=False)
+                window[('input_realdatum_jahre')].update(visible=False)
+                window[('realdatum_text_bis')].update(visible=False)
+                window[('realdatum_tage_ende')].update(visible=False)
+                window[('realdatum_monate_ende')].update(visible=False)
+                window[('realdatum_jahre_ende')].update(visible=False)
+                window[('input_realdatum_zusatz')].update(visible=False)
+                window[('realdatum_ende_zusatz')].update(visible=False)
+                window[('description_realdatum')].update(visible=False)
+                
+                erase_flagged_realdatum = True
+                window.refresh()
+                window['column_1'].contents_changed()
+
+            elif event != None and event[0] == '-DEL-_realort':
+                window[('-DEL-_realort', event[1])].update(visible=False)
+                window[('realort', event[1])].update(visible=False)
+                window[('realisierung_kontext', event[1])].update(visible=False)
+                window[('look_for_name_in_transcript_realort', event[1])].update(visible=False)
+                window[('audio_starter_realort', event[1])].update(visible=False)
+                window[('Play_File_realort', event[1])].update(visible=False)
+                window[('Stop_File_realort', event[1])].update(visible=False)
+                
+                erase_flagged_realorte.append(event[1])
+                window.refresh()
+                window['column_1'].contents_changed()
 
             elif event != None and event[0] == 'refresh_ndb_mitwirkende': 
                 #Refresh Mitwirkender Abgleich - löst neue NDB-Suche aus
                 values_passed = values
+                window[("bemerkung_mitwirkende", event[1])].update(visible = False)
+                window[("bemerkung_mitwirkende_text", event[1])].update(visible = False)
                 
                 window[("input_mitwirkende", event[1])].update(disabled = True)
                 index_mitwirkender_refresh = event[1]
+                vorname = values_passed[('input_mitwirkende_vorname', index_mitwirkender_refresh)]
+                nachname = values_passed[('input_mitwirkende_nachname', index_mitwirkender_refresh)]
+                name = ' '.join([vorname, nachname])
                 if self.current_input[index_mitwirkender_refresh] == 'Freitext': #Bei Freitextfeld stets mit aktuellem Input des Freitextes suchen
-                    
-                    if self.alt_input[index_mitwirkender_refresh] == False:
-                        new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(values_passed[('input_mitwirkende', index_mitwirkender_refresh)], description_list_mitwirkende[index_mitwirkender_refresh])
-                        
-                        
-                    else:
-                        new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(values_passed[('input_mitwirkende_alt', index_mitwirkender_refresh)], description_list_mitwirkende[index_mitwirkender_refresh])
-                    
-                        
+                    new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(name, description_list_mitwirkende[index_mitwirkender_refresh])
+                       
                 else: #Sonst mir originalem Input neu suchen in NDB
                     if input_list_mitwirkende[index_mitwirkender_refresh] != 'None':
-                        new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(input_list_mitwirkende[index_mitwirkender_refresh], description_list_mitwirkende[index_mitwirkender_refresh])   
+                        new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(name, description_list_mitwirkende[index_mitwirkender_refresh])   
                     else:
                         ()         
                 
                 if len(new_dropdown_input[0])==0: #Wenn beim NDB-Abgleich nichts gefunden wurde
                     if self.orig_input[index_mitwirkender_refresh] == 'Freitext':
-                        window[("input_mitwirkende", event[1])].update(value = values_passed[('input_mitwirkende', index_mitwirkender_refresh)], disabled = False)
+                        window[("input_mitwirkende_vorname", event[1])].update(value = values_passed[('input_mitwirkende_vorname', index_mitwirkender_refresh)], disabled = False)
+                        window[("input_mitwirkende_nachname", event[1])].update(value = values_passed[('input_mitwirkende_nachname', index_mitwirkender_refresh)], disabled = False)
                         self.final_input_is_original[event[1]] = True
                         
                     elif self.orig_input[index_mitwirkender_refresh] == 'Dropdown':
-                        window[("input_mitwirkende_alt", event[1])].update(value = values_passed[('input_mitwirkende_alt', index_mitwirkender_refresh)], visible = True, disabled = False, readonly = False)
+                        window[("input_mitwirkende", event[1])].update(value = values_passed[('input_mitwirkende', index_mitwirkender_refresh)], visible = True, disabled = False, readonly = False)
                         window[("input_mitwirkende", event[1])].update(visible = False)   
                         self.final_input_is_original[event[1]] = False           
 
@@ -3012,24 +3666,30 @@ class ui_correction():
                     if self.orig_input[index_mitwirkender_refresh] == 'Dropdown':
                         window[("input_mitwirkende", event[1])].update(values = list_to_show, value = list_to_show[0], disabled = False, visible = True)
                         self.final_input_is_original[event[1]] = True
-                        window[("input_mitwirkende_alt", event[1])].update(visible = False)
+                        window[("input_mitwirkende_vorname", event[1])].update(visible = False)
+                        window[("input_mitwirkende_nachname", event[1])].update(visible = False)
                     
                     elif self.orig_input[index_mitwirkender_refresh] == 'Freitext':
-                        window[("input_mitwirkende_alt", event[1])].update(values = list_to_show, value = list_to_show[0], visible = True, disabled = False)
-                        window[("input_mitwirkende", event[1])].update(visible = False)
+                        window[("input_mitwirkende", event[1])].update(values = list_to_show, value = list_to_show[0], visible = True, disabled = False)
+                        window[("input_mitwirkende_vorname", event[1])].update(visible = False)
+                        window[("input_mitwirkende_nachname", event[1])].update(visible = False)
                         self.final_input_is_original[event[1]] = False
 
                     #Edit NDB-Hyperlink
                     self.current_hyperlink_list_mitwirkende[index_mitwirkender_refresh] = new_dropdown_input[5]
                     window[("URL_mitwirkende", index_mitwirkender_refresh)].update(visible = True, value = new_dropdown_input[5][0])   
                     self.current_hyperlink_mitwirkende[index_mitwirkender_refresh] = new_dropdown_input[5][0]
+                window[("bemerkung_mitwirkende_text", event[1])].update(visible = True)
+                window[("bemerkung_mitwirkende", event[1])].update(visible = True)
+                
             
             elif event != None and event[0] == 'change_input_type_mitwirk': #Wenn Button zum ändern des Inputs bei Mitwirkenden gedrückt wurde
                 if self.orig_input[event[1]] == 'Freitext' and self.current_input[event[1]] != 'Freitext':
                     self.current_input[event[1]] = 'Freitext'
                     self.alt_input[event[1]] = False
-                    window[('input_mitwirkende_alt', event[1])].update(visible=False)
-                    window[("input_mitwirkende", event[1])].update(visible=True, readonly = False)  
+                    window[('input_mitwirkende', event[1])].update(visible=False)
+                    window[("input_mitwirkende_vorname", event[1])].update(visible=True, readonly = False) 
+                    window[("input_mitwirkende_nachname", event[1])].update(visible=True, readonly = False)   
                     self.final_input_is_original[event[1]] = True
                     window[('URL_mitwirkende', event[1])].update(visible = False)
                     print('Button_state_1')
@@ -3042,16 +3702,18 @@ class ui_correction():
                 elif self.orig_input[event[1]] == 'Dropdown' and self.current_input[event[1]] != 'Dropdown':
                     self.current_input[event[1]] = 'Freitext'
                     self.alt_input[event[1]] = True
-                    window[('input_mitwirkende_alt', event[1])].update(visible=True, readonly = False)
-                    window[("input_mitwirkende", event[1])].update(visible=False)  
+                    window[('input_mitwirkende', event[1])].update(visible=False, readonly = False)
+                    window[("input_mitwirkende_vorname", event[1])].update(visible=True)  
+                    window[("input_mitwirkende_nachname", event[1])].update(visible=True)  
                     self.final_input_is_original[event[1]] = False
                     window[('URL_mitwirkende', event[1])].update(visible = False)
                     print('Button_state_3')
                 elif self.orig_input[event[1]] == 'Dropdown' and self.current_input[event[1]] == 'Dropdown':
                     self.current_input[event[1]] = 'Freitext'
                     self.alt_input[event[1]] = True
-                    window[('input_mitwirkende_alt', event[1])].update(visible=True)
-                    window[("input_mitwirkende", event[1])].update(visible=False) 
+                    window[('input_mitwirkende', event[1])].update(visible=False, readonly = False)
+                    window[("input_mitwirkende_vorname", event[1])].update(visible=True)  
+                    window[("input_mitwirkende_nachname", event[1])].update(visible=True) 
                     self.final_input_is_original[event[1]] = True
                     print('Button_state_4')
                     window[('URL_mitwirkende', event[1])].update(visible = False)
@@ -3061,13 +3723,13 @@ class ui_correction():
                 
                 window[("input_urheber", event[1])].update(disabled = True)
                 index_urheber_refresh = event[1]
+                vorname = values_passed[('input_urheber_vorname', index_urheber_refresh)]
+                nachname = values_passed[('input_urheber_nachname', index_urheber_refresh)]
+                name = ' '.join([vorname, nachname])
+
                 if self.current_input_urheber[index_urheber_refresh] == 'Freitext': #Bei Freitextfeld stets mit aktuellem Input des Freitextes suchen
-                    
-                    if self.alt_input_urheber[index_urheber_refresh] == False:
-                        new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(values_passed[('input_urheber', index_urheber_refresh)], description_list_urheber[index_urheber_refresh])
-                        
-                    else:
-                        new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(values_passed[('input_urheber_alt', index_urheber_refresh)], description_list_urheber[index_urheber_refresh])
+                    new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(name, description_list_urheber[index_urheber_refresh])
+                             
                         
                 else: #Sonst mir originalem Input neu suchen in NDB
                     if input_list_urheber[index_urheber_refresh] != 'None':
@@ -3077,11 +3739,12 @@ class ui_correction():
                 
                 if len(new_dropdown_input[0])==0: #Wenn beim NDB-Abgleich nichts gefunden wurde
                     if self.orig_input_urheber[index_urheber_refresh] == 'Freitext':
-                        window[("input_urheber", event[1])].update(value = values_passed[('input_urheber', index_urheber_refresh)], disabled = False)
+                        window[("input_urheber_vorname", event[1])].update(value = values_passed[('input_urheber_vorname', index_urheber_refresh)], disabled = False)
+                        window[("input_urheber_nachname", event[1])].update(value = values_passed[('input_urheber_nachname', index_urheber_refresh)], disabled = False)
                         self.final_input_is_original_urheber[event[1]] = True
                         
                     elif self.orig_input_urheber[index_urheber_refresh] == 'Dropdown':
-                        window[("input_urheber_alt", event[1])].update(value = values_passed[('input_urheber_alt', index_urheber_refresh)], visible = True, disabled = False, readonly = False)
+                        window[("input_urheber", event[1])].update(value = values_passed[('input_urheber', index_urheber_refresh)], visible = True, disabled = False, readonly = False)
                         window[("input_urheber", event[1])].update(visible = False)   
                         self.final_input_is_original_urheber[event[1]] = False           
 
@@ -3098,11 +3761,13 @@ class ui_correction():
                     if self.orig_input_urheber[index_urheber_refresh] == 'Dropdown':
                         window[("input_urheber", event[1])].update(values = list_to_show, value = list_to_show[0], disabled = False, visible = True)
                         self.final_input_is_original_urheber[event[1]] = True
-                        window[("input_urheber_alt", event[1])].update(visible = False)
+                        window[("input_urheber_vorname", event[1])].update(visible = False)
+                        window[("input_urheber_nachname", event[1])].update(visible = False)
                     
                     elif self.orig_input_urheber[index_urheber_refresh] == 'Freitext':
-                        window[("input_urheber_alt", event[1])].update(values = list_to_show, value = list_to_show[0], visible = True, disabled = False)
-                        window[("input_urheber", event[1])].update(visible = False)
+                        window[("input_urheber", event[1])].update(values = list_to_show, value = list_to_show[0], visible = True, disabled = False)
+                        window[("input_urheber_vorname", event[1])].update(visible = False)
+                        window[("input_urheber_nachname", event[1])].update(visible = False)
                         self.final_input_is_original_urheber[event[1]] = False
 
                     #Edit NDB-Hyperlink
@@ -3114,8 +3779,9 @@ class ui_correction():
                 if self.orig_input_urheber[event[1]] == 'Freitext' and self.current_input_urheber[event[1]] != 'Freitext':
                     self.current_input_urheber[event[1]] = 'Freitext'
                     self.alt_input_urheber[event[1]] = False
-                    window[('input_urheber_alt', event[1])].update(visible=False)
-                    window[("input_urheber", event[1])].update(visible=True, readonly = False)  
+                    window[('input_urheber', event[1])].update(visible=False)
+                    window[("input_urheber_vorname", event[1])].update(visible=True, readonly = False)  
+                    window[("input_urheber_nachname", event[1])].update(visible=True, readonly = False)  
                     self.final_input_is_original_urheber[event[1]] = True
                     window[('URL_urheber', event[1])].update(visible = False)
                     print('Button_state_1 Urheber')
@@ -3128,16 +3794,18 @@ class ui_correction():
                 elif self.orig_input_urheber[event[1]] == 'Dropdown' and self.current_input_urheber[event[1]] != 'Dropdown':
                     self.current_input_urheber[event[1]] = 'Freitext'
                     self.alt_input_urheber[event[1]] = True
-                    window[('input_urheber_alt', event[1])].update(visible=True, readonly = False)
-                    window[("input_urheber", event[1])].update(visible=False)  
+                    window[('input_urheber', event[1])].update(visible=True, readonly = False)
+                    window[("input_urheber_vorname", event[1])].update(visible=True)  
+                    window[("input_urheber_nachname", event[1])].update(visible=True)  
                     self.final_input_is_original_urheber[event[1]] = False
                     window[('URL_urheber', event[1])].update(visible = False)
                     print('Button_state_3 Urheber')
                 elif self.orig_input_urheber[event[1]] == 'Dropdown' and self.current_input_urheber[event[1]] == 'Dropdown':
                     self.current_input_urheber[event[1]] = 'Freitext'
                     self.alt_input_urheber[event[1]] = True
-                    window[('input_urheber_alt', event[1])].update(visible=True)
-                    window[("input_urheber", event[1])].update(visible=False) 
+                    window[('input_urheber', event[1])].update(visible=False)
+                    window[("input_urheber_vorname", event[1])].update(visible=True) 
+                    window[("input_urheber_nachname", event[1])].update(visible=True) 
                     self.final_input_is_original_urheber[event[1]] = True
                     window[('URL_urheber', event[1])].update(visible = False)
                     print('Button_state_4 Urheber')
@@ -3147,17 +3815,14 @@ class ui_correction():
                 
                 window[("input_tpers", event[1])].update(disabled = True)
                 index_tpers_refresh = event[1]
+                vorname = values_passed[('input_tpers_vorname', index_tpers_refresh)]
+                nachname = values_passed[('input_tpers_nachname', index_tpers_refresh)]
+                name = ' '.join([vorname, nachname])
                 print('Current Input_Tpers Liste:', self.current_input_tpers)
                 print('Index looked for:', index_tpers_refresh)
                 if self.current_input_tpers[index_tpers_refresh] == 'Freitext': #Bei Freitextfeld stets mit aktuellem Input des Freitextes suchen
-                    
-                    if self.alt_input_tpers[index_tpers_refresh] == False: #Wenn es sich hier nicht um den alternativem Input zum Original Input handelt, der ursprünglich ausgeblendet ist
                         
-                        new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(values_passed[('input_tpers', index_tpers_refresh)], description_list_tpers[index_tpers_refresh])
-                        
-                    else: #Wenn das Feld ursprünglich ein Dropdown war und jetzt umgewandelt wurde in ein Freitextfeld
-                        
-                        new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(values_passed[('input_tpers_alt', index_tpers_refresh)], description_list_tpers[index_tpers_refresh])
+                    new_dropdown_input = norm_db_linker.make_name_suggestions_from_LLM_suggestions(name, description_list_tpers[index_tpers_refresh])
                         
                 else: #Sonst mit originalem Input neu suchen in NDB
                     
@@ -3165,12 +3830,13 @@ class ui_correction():
                 
                 if len(new_dropdown_input[0])==0: #Wenn beim NDB-Abgleich nichts gefunden wurde
                     if self.orig_input_tpers[index_tpers_refresh] == 'Freitext':
-                        window[("input_tpers", event[1])].update(value = values_passed[('input_tpers', index_tpers_refresh)], disabled = False)
+                        window[("input_tpers_vorname", event[1])].update(value = values_passed[('input_tpers_vorname', index_tpers_refresh)], disabled = False)
+                        window[("input_tpers_nachname", event[1])].update(value = values_passed[('input_tpers_nachname', index_tpers_refresh)], disabled = False)
                         self.final_input_is_original_tpers[event[1]] = True
                         
                         
                     elif self.orig_input_tpers[index_tpers_refresh] == 'Dropdown':
-                        window[("input_tpers_alt", event[1])].update(value = values_passed[('input_tpers_alt', index_tpers_refresh)], visible = True, disabled = False, readonly = False)
+                        window[("input_tpers", event[1])].update(value = values_passed[('input_tpers', index_tpers_refresh)], visible = True, disabled = False, readonly = False)
                         window[("input_tpers", event[1])].update(visible = False)   
                         self.final_input_is_original_tpers[event[1]] = False       
 
@@ -3187,12 +3853,14 @@ class ui_correction():
                     if self.orig_input_tpers[index_tpers_refresh] == 'Dropdown':
                         window[("input_tpers", event[1])].update(values = list_to_show, value = list_to_show[0], disabled = False, visible = True)
                         self.final_input_is_original_tpers[event[1]] = True
-                        window[("input_tpers_alt", event[1])].update(visible = False)
+                        window[("input_tpers_vorname", event[1])].update(visible = False)
+                        window[("input_tpers_nachname", event[1])].update(visible = False)
 
                     elif self.orig_input_tpers[index_tpers_refresh] == 'Freitext':
                         
-                        window[("input_tpers_alt", event[1])].update(values = list_to_show, value = list_to_show[0], visible = True, disabled = False)
-                        window[("input_tpers", event[1])].update(visible = False)
+                        window[("input_tpers", event[1])].update(values = list_to_show, value = list_to_show[0], visible = True, disabled = False)
+                        window[("input_tpers_vorname", event[1])].update(visible = False)
+                        window[("input_tpers_nachname", event[1])].update(visible = False)
                         self.final_input_is_original_tpers[event[1]] = False
 
                     #Edit NDB-Hyperlink
@@ -3207,8 +3875,9 @@ class ui_correction():
                 if self.orig_input_tpers[event[1]] == 'Freitext' and self.current_input_tpers[event[1]] != 'Freitext':
                     self.current_input_tpers[event[1]] = 'Freitext'
                     self.alt_input_tpers[event[1]] = False
-                    window[('input_tpers_alt', event[1])].update(visible=False)
-                    window[("input_tpers", event[1])].update(visible=True, readonly = False)  
+                    window[('input_tpers', event[1])].update(visible=False)
+                    window[("input_tpers_vorname", event[1])].update(visible=True, readonly = False)
+                    window[("input_tpers_nachname", event[1])].update(visible=True, readonly = False)    
                     self.final_input_is_original_tpers[event[1]] = True
                     window[('URL_tpers', event[1])].update(visible = False)
                     print('Button_state_1')
@@ -3221,16 +3890,18 @@ class ui_correction():
                 elif self.orig_input_tpers[event[1]] == 'Dropdown' and self.current_input_tpers[event[1]] != 'Dropdown':
                     self.current_input_tpers[event[1]] = 'Freitext'
                     self.alt_input_tpers[event[1]] = True
-                    window[('input_tpers_alt', event[1])].update(visible=True, readonly = False)
-                    window[("input_tpers", event[1])].update(visible=False)  
+                    window[('input_tpers', event[1])].update(visible=True, readonly = False)
+                    window[("input_tpers_vorname", event[1])].update(visible=True)  
+                    window[("input_tpers_nachname", event[1])].update(visible=True)  
                     self.final_input_is_original_tpers[event[1]] = False
                     window[('URL_tpers', event[1])].update(visible = False)
                     print('Button_state_3')
                 elif self.orig_input_tpers[event[1]] == 'Dropdown' and self.current_input_tpers[event[1]] == 'Dropdown':
                     self.current_input_tpers[event[1]] = 'Freitext'
                     self.alt_input_tpers[event[1]] = True
-                    window[('input_tpers_alt', event[1])].update(visible=True)
-                    window[("input_tpers", event[1])].update(visible=False) 
+                    window[('input_tpers', event[1])].update(visible=False)
+                    window[("input_tpers_vorname", event[1])].update(visible=True) 
+                    window[("input_tpers_nachname", event[1])].update(visible=True) 
                     self.final_input_is_original_tpers[event[1]] = True
                     print('Button_state_4')  
                     window[('URL_tpers', event[1])].update(visible = False)
@@ -3606,7 +4277,13 @@ class ui_correction():
                 event_index = self.eventlist_tinst.index(event)
                 skip_time = (values[('audio_starter_tinst', event_index)])
                 audioplayer2.play_file()
-                audioplayer2.scroll_playback_to_second(skip_time)    
+                audioplayer2.scroll_playback_to_second(skip_time) 
+
+            if event in self.eventlist_realort: 
+                event_index = self.eventlist_realort.index(event)
+                skip_time = (values[('audio_starter_realort', event_index)])
+                audioplayer2.play_file()
+                audioplayer2.scroll_playback_to_second(skip_time)   
             
             if event in self.eventlist_mitwirkende: 
                 print(event)
@@ -3614,6 +4291,7 @@ class ui_correction():
                 #print('Eventlist_Mitwirkende triggered')
                 event_index = self.eventlist_mitwirkende.index(event)
                 skip_time = (values[('audio_starter_mitwirkende', event_index)])
+                print('DEBUG SKIP-TIME MITWIRKENDE:', skip_time)
                 audioplayer2.play_file()
                 if skip_time != '':
                    audioplayer2.scroll_playback_to_second(int(float(skip_time)))
@@ -3666,7 +4344,7 @@ class ui_correction():
                 
                 audioplayer2.stop_playback()
 
-            if event in self.eventlist_torte_stop_file or event in self.eventlist_tinst_stop_file or event in self.eventlist_tereignis_stop_file or event in self.eventlist_tags_stop_file: 
+            if event in self.eventlist_torte_stop_file or event in self.eventlist_tinst_stop_file or event in self.eventlist_tereignis_stop_file or event in self.eventlist_tags_stop_file or event in self.eventlist_realort_stop_file: 
                 print('found in Stop Eventlist')
                 #event_index = self.eventlist_torte_stop_file.index(event)
                 
@@ -3678,99 +4356,23 @@ class ui_correction():
                 
                 audioplayer2.stop_playback()
                 
-            if event == 'Play_File_search': 
-                print('Eventlist_Search Player triggered')
-                skip_time = (values['audio_starter_transcript_search'])
-                audioplayer2.play_file()
-                print('Audioplayer 2 should Start at', skip_time)
-                if skip_time != '':
-                    audioplayer2.scroll_playback_to_second(int(float(skip_time)))
-
-            if event == 'Stop_File_search': 
-                audioplayer2.stop_playback()
-
-            if event == sg.WINDOW_CLOSE_ATTEMPTED_EVENT:
-                print('Popup schließen')
-                popup_open_search = False
-                window_popup.close()
-                audioplayer2.stop_playback()
-
-            if event == sg.WIN_CLOSED or event == "Cancel" : # if user closes window or clicks cancel
-                try:
-                    if window == window_popup:
-                        window_popup.close()
-                        print('popup_close')
-                    elif window == window_popup_karin:
-                        window_popup_karin.close()
-                        print('popup_karin_close')
-                except:
-                    try:
-                        if window == window_popup_karin:
-                            window_popup_karin.close()
-                            print('popup_karin_close')
-                        elif window == window_popup:
-                            window_popup.close()
-                            print('popup_close')
-                    except:
-                        pass
-                if window == window1:
-                    print('Close all Windows')
-                    print('Alle Fenster dicht')
-                    audioplayer1.stop_playback()
-                    audioplayer2.stop_playback()
-                    values_passed = None    
-                    break
 
             #Popups
             if event == 'Stichwortsuche::stichwortsuche':#Popup Event
-                print('stichwortsuche triggered')
-                window_popup = self.popup_window()
-                print('event_popup_0')
-                popup_open_search = True  #set status  dass ein Pop geöffnet ist.  
-                print('event_sub:', event)
-
-            if event == 'Transcript_File_search':#Popup Event
-                print('event_popup_1')
-                if values[('audio_starter_transcript_search')] != '':
-                    print('event_popup_2')
-                    values_start = values[('audio_starter_transcript_search')]
-                    index_transcript = start_sorted.index(values_start)
-                    print('index Transcript:', index_transcript)
-                    list_text = []
-                    joiner = ' '
-                    if index_transcript >0:
-                        list_text.append(transcripts_list[index_transcript-1])
-                                
-                        list_text.append(transcripts_list[index_transcript])
-                            
-                    if index_transcript < len(transcripts_list):
-                        
-                        list_text.append(transcripts_list[index_transcript+1])
-                        
-                    text_gesamt = joiner.join(list_text)
-                    window_popup[('transcript_search1')].update(visible=True,value=text_gesamt)
+                window_popup = self.popup_window(transcripts_list, start_sorted, audiofile)
+                
             #Ask K.AR.IN
             if event == 'Frag K.AR.IN':#Popup Event
-                processor = process_text_with_gemini()
-                print('Open K.AR.IN')
-                window_popup_karin = self.popup_window_karin()
+                
+                window_popup_karin = self.popup_window_karin(transcripts_list)
                 print('event_popup_2')
-                popup_open_karin = True  #set status  dass ein Pop geöffnet ist.  
-                print('event_sub:', event)
 
-            if event == 'ask_karin':#Popup Event
-                print('event_popup_3')
-                if values[('ask_karin_input')] != '':
-                    print('event_popup_4')
-                    values_input = values[('ask_karin_input')]
-                    joiner = ' '
-                    transcript_full = joiner.join(transcripts_list)
-                    #print(transcript_full)
-                    answer_llm = processor.ask_karin(transcript_full, values_input)
-                     
-                    window_popup_karin[('answer_karin')].update(visible=True)
-                    window_popup_karin[('ask_karin_output')].update(visible=True, value=answer_llm)
-
+            #Audioplayer Gesamtfile
+            if event == 'Audioplayer':#Popup Event
+                
+                print('Open Audioplayer')
+                window_popup_audioplayer = self.popup_window_audioplayer(audiofile, transcripts_list, start_sorted, f'{audiofiles_path}\\{original_file}')
+                print('event_audioplayer_1')
         try:    
             window.close()
         except:
@@ -3779,13 +4381,18 @@ class ui_correction():
             window_popup.close()
         except:
             ()
+        
         try:
             window_popup_karin.close()
         except:
             ()
+        try:
+            window_popup_audioplayer.close()
+        except:
+            ()
         
         if popup_open_search == True:
-            window_popup.close()
+
             print(values_passed)
         
         if values_passed != False: #Wenn nicht der Button "Nicht in HFDB übernehmen" gedrückt wurde
@@ -3794,12 +4401,25 @@ class ui_correction():
             list_final_roles_mitwirkende = []
                         
             for j in range(len(input_list_mitwirkende)):
-                if self.final_input_is_original[j] == True:
-                    mitwirkende = values_passed[('input_mitwirkende', j)]
+                if self.current_input[j] == 'Dropdown':
+                    try:
+                        mitwirkende = values_passed[('input_mitwirkende', j)]
+                        vorname = None
+                        nachname = None
+                        bemerkung = values_passed[("bemerkung_mitwirkende", j)]
+                    except TypeError:
+                        mitwirkende = ''
+                        vorname = ''
+                        nachname = ''
+                        bemerkung = ''
                 else:
-                    mitwirkende = values_passed[('input_mitwirkende_alt', j)]
+                    mitwirkende = ''
+                    vorname = values_passed[('input_mitwirkende_vorname', j)]
+                    nachname = values_passed[('input_mitwirkende_nachname', j)]
+                    bemerkung = values_passed[("bemerkung_mitwirkende", j)]
+
                 list_single_entity_sets_mitwirkende = []
-                if mitwirkende != '' and mitwirkende != ' ' and j not in erase_flagged_mitwirkende:
+                if vorname != '' and vorname != ' ' and nachname != '' and nachname != ' ' and j not in erase_flagged_mitwirkende:
                     if '|' in mitwirkende:#Wenn wir ein Dropdown-Feld mit NDB-Daten haben
                         raw_data = mitwirkende
                         single_values = raw_data.split('|')
@@ -3807,6 +4427,7 @@ class ui_correction():
                         #print('NDB Mitwirkende Data:', ndb_mitwirkende_data)
                         #print('Single Values:', single_values[5])
                         print('DEBUG Mitwirkende Übergabe:', ndb_mitwirkende_data[j][5])
+                        print('DEBUG ndb_mitwirkende_data[j]:', ndb_mitwirkende_data[j])
                         index_list_original_ndb_abgleich = ndb_mitwirkende_data[j][5].index(single_values[5].strip())
                         person_id_chosen = ndb_mitwirkende_data[j][0][index_list_original_ndb_abgleich].strip()
                         
@@ -3824,15 +4445,18 @@ class ui_correction():
                     else:
                         person_id_chosen = None
                         name_id_chosen = None
-                        name_chosen = values_passed[('input_mitwirkende', j)]
-                        vorname_chosen = None
+                        name_chosen = nachname
+                        vorname_chosen = vorname
+
 
                     list_single_entity_sets_mitwirkende.append(person_id_chosen)
                     list_single_entity_sets_mitwirkende.append(name_id_chosen)
                     list_single_entity_sets_mitwirkende.append(name_chosen)
                     list_single_entity_sets_mitwirkende.append(vorname_chosen)
+                    list_single_entity_sets_mitwirkende.append(bemerkung)
 
                     list_final_entities_mitwirkende.append(list_single_entity_sets_mitwirkende)
+                    
                     list_final_roles_mitwirkende.append(values_passed[('combo_mitwirkende', j)]) 
 
             #Finale Urheber zur Rückgabe an ak-maker erstellen
@@ -3840,18 +4464,23 @@ class ui_correction():
             list_final_roles_urheber = []
                         
             for j in range(len(input_list_urheber)):
-                if self.final_input_is_original_urheber[j] == True:
+                if self.current_input_urheber[j] == True:
                     urheber = values_passed[('input_urheber', j)]
+                    vorname = None
+                    nachname = None
                 else:
-                    urheber = values_passed[('input_urheber_alt', j)]
+                    urheber = ''
+                    vorname = values_passed[('input_urheber_vorname', j)]
+                    nachname = values_passed[('input_urheber_nachname', j)]
                 list_single_entity_sets_urheber = []
-                if urheber != '' and urheber != ' ' and j not in erase_flagged_urheber:
+                if vorname != '' and vorname != ' ' and nachname != '' and nachname != ' ' and j not in erase_flagged_urheber:
                     if ' | ' in urheber:#Wenn wir ein Dropdown-Feld mit NDB-Daten haben
                         raw_data = urheber
                         single_values = raw_data.split(' | ')
                         #print('Single Values:', single_values)
                         #print('NDB Mitwirkende Data:', ndb_mitwirkende_data)
                         #print('Single Values:', single_values[5])
+                        print('DEBUG NDB URHEBER DATA - j:', ndb_urheber_data[j])
                         index_list_original_ndb_abgleich = ndb_urheber_data[j][5].index(single_values[5])
                         person_id_chosen = ndb_urheber_data[j][0][index_list_original_ndb_abgleich]
                         
@@ -3862,13 +4491,16 @@ class ui_correction():
                         name_chosen = ndb_urheber_data[j][2][index_list_original_ndb_abgleich]
                         
 
-                        vorname_chosen = ndb_urheber_data[j][3][index_list_original_ndb_abgleich]
+                        if ndb_urheber_data[j][3][index_list_original_ndb_abgleich] != None:
+                            vorname_chosen = ndb_urheber_data[j][3][index_list_original_ndb_abgleich].strip()
+                        else:
+                            vorname_chosen = None
                         
                     else:
                         person_id_chosen = None
                         name_id_chosen = None
-                        name_chosen = values_passed[('input_urheber', j)]
-                        vorname_chosen = None
+                        name_chosen = nachname
+                        vorname_chosen = vorname
 
                     list_single_entity_sets_urheber.append(person_id_chosen)
                     list_single_entity_sets_urheber.append(name_id_chosen)
@@ -3884,18 +4516,25 @@ class ui_correction():
                         
             for j in range(len(input_list_tpers)):
                 if input_list_tpers[j] != None:
-                    if self.final_input_is_original_tpers[j] == True:
+                    if self.current_input_tpers[j] == 'Dropdown':
                         tpers = values_passed[('input_tpers', j)]
+                        vorname = None
+                        nachname = None
                     else:
-                        tpers = values_passed[('input_tpers_alt', j)]
+                        tpers = ''
+                        vorname = values_passed[('input_tpers_vorname', j)]
+                        nachname = values_passed[('input_tpers_nachname', j)]
                     list_single_entity_sets_tpers = []
-                    if tpers != '' and tpers != ' ' and j not in erase_flagged_tpers:
+                    if vorname != '' and vorname != ' ' and nachname != '' and nachname != ' ' and j not in erase_flagged_tpers:
                         if ' | ' in tpers:#Wenn wir ein Dropdown-Feld mit NDB-Daten haben
                             raw_data = tpers
                             print('raw_data:', raw_data)
                             single_values = raw_data.split(' | ')
                             print('single_values:', single_values)
+                            print('DEBUG NDB TPERS DATA - j:', ndb_thema_persons_suggest[j])
+
                             index_list_original_ndb_abgleich = ndb_thema_persons_suggest[j][5].index(single_values[5])
+
                             person_id_chosen = ndb_thema_persons_suggest[j][0][index_list_original_ndb_abgleich]
                             
 
@@ -3905,13 +4544,16 @@ class ui_correction():
                             name_chosen = ndb_thema_persons_suggest[j][2][index_list_original_ndb_abgleich]
                             
 
-                            vorname_chosen = ndb_thema_persons_suggest[j][3][index_list_original_ndb_abgleich]
+                            if ndb_thema_persons_suggest[j][3][index_list_original_ndb_abgleich] != None:
+                                vorname_chosen = ndb_thema_persons_suggest[j][3][index_list_original_ndb_abgleich].strip()
+                            else:
+                                vorname_chosen = None
                             
                         else:
                             person_id_chosen = None
                             name_id_chosen = None
-                            name_chosen = values_passed[('input_tpers', j)]
-                            vorname_chosen = None
+                            name_chosen = nachname
+                            vorname_chosen = vorname
 
                         list_single_entity_sets_tpers.append(person_id_chosen)
                         list_single_entity_sets_tpers.append(name_id_chosen)
@@ -4045,13 +4687,41 @@ class ui_correction():
                     tereignis_day = values_passed[("input_tereignis_tage", j)]
                     tereignis_month = values_passed[("input_tereignis_monate", j)]
                     tereignis_year = values_passed[("input_tereignis_jahre", j)]
+                    tereignis_day_ende = values_passed[("input_tereignis_tage_ende", j)]
+                    tereignis_month_ende = values_passed[("input_tereignis_monate_ende", j)]
+                    tereignis_year_ende = values_passed[("input_tereignis_jahre_ende", j)]
 
                     list_single_entity_sets_tereignis.append(tereignis_name)
                     list_single_entity_sets_tereignis.append(tereignis_day)
                     list_single_entity_sets_tereignis.append(tereignis_month)
                     list_single_entity_sets_tereignis.append(tereignis_year)
+                    list_single_entity_sets_tereignis.append(tereignis_day_ende)
+                    list_single_entity_sets_tereignis.append(tereignis_month_ende)
+                    list_single_entity_sets_tereignis.append(tereignis_year_ende)
 
                     list_final_entities_tereignis.append(list_single_entity_sets_tereignis)
+
+            #Realisation_Datum_additions
+            list_final_entities_realdatum = []
+            if erase_flagged_realdatum == False:
+                list_final_entities_realdatum.append(values_passed[("input_realdatum_tage")])
+                list_final_entities_realdatum.append(values_passed[("input_realdatum_monate")])
+                list_final_entities_realdatum.append(values_passed[("input_realdatum_jahre")])
+                list_final_entities_realdatum.append(values_passed[("input_realdatum_zusatz")])
+                list_final_entities_realdatum.append(values_passed[("realdatum_tage_ende")])
+                list_final_entities_realdatum.append(values_passed[("realdatum_monate_ende")])
+                list_final_entities_realdatum.append(values_passed[("realdatum_jahre_ende")])
+                list_final_entities_realdatum.append(values_passed[("realdatum_ende_zusatz")])
+
+            #Realisierung Orte
+            realorte_list_final = []
+            for r in range(len(realisierung_orte_suggest)):
+                if r not in erase_flagged_realorte:
+                    realisierung_ort = values_passed[("realort", r)]
+                    realorte_list_final.append(realisierung_ort)
+            
+            realorte_string = ', '.join(realorte_list_final)
+            realisierung_orte = realorte_string
 
             #Deskriptoren_Values Passing
             list_final_entities_desk = []
@@ -4125,6 +4795,8 @@ class ui_correction():
             list_final_entities_urheber = [list_final_entities_urheber, list_final_roles_urheber]
             genre_korrigiert = values_passed['combo_genre']
             lese_abspielgeschwindigkeit = values_passed['combo_lese_abspiel']
+            realisierung_typ_final_return = values_passed['realtyp']
+            
         else: #Wenn Button "Nicht in HFDB übernehmen" gedrückt wurde
             list_final_entities_mitwirkende = False
             list_final_entities_urheber = False
@@ -4141,8 +4813,11 @@ class ui_correction():
             list_final_entities_tereignis = False
             list_final_entities_desk = False
             list_final_entities_tags = False
+            list_final_entities_realdatum = False
+            realisierung_orte = False
+            realisierung_typ_final_return = False
 
-        return(list_final_entities_mitwirkende, list_final_entities_tpers, zusammenfassung_korrigiert, titel_korrigiert, list_final_entities_torte, list_final_entities_gattungen, konf_audio_gattungen_korrigiert, genre_korrigiert, lese_abspielgeschwindigkeit, list_final_entities_urheber, list_final_entities_tinst, list_final_entities_tereignis, list_final_entities_sprachen, list_final_entities_desk, list_final_entities_tags)
+        return(list_final_entities_mitwirkende, list_final_entities_tpers, zusammenfassung_korrigiert, titel_korrigiert, list_final_entities_torte, list_final_entities_gattungen, konf_audio_gattungen_korrigiert, genre_korrigiert, lese_abspielgeschwindigkeit, list_final_entities_urheber, list_final_entities_tinst, list_final_entities_tereignis, list_final_entities_sprachen, list_final_entities_desk, list_final_entities_tags,list_final_entities_realdatum, realisierung_orte, realisierung_typ_final_return)
 
 
 
