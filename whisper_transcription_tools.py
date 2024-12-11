@@ -20,6 +20,13 @@ class transcribe_with_whisper():
         Returns:
             model (Whisper Object): Loaded Whisper Model
         """
+        print(f"CUDA verfügbar: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            print(f"CUDA Version: {torch.version.cuda}")
+            print(f"CUDA Geräte: {torch.cuda.device_count()}")
+            print(f"CUDA aktuelles Gerät: {torch.cuda.current_device()}")
+            print(f"CUDA Geräte Name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
+            
         if torch.cuda.is_available() == False:
             model = whisper.load_model(self.model_to_use)
             print('No CUDA found')
