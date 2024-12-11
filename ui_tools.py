@@ -135,10 +135,15 @@ def authenticate(text_intro):
         layout = [[l1], [l4,r11,r12], [l2,i1], [l3,i2], [b1, b2]]
 
         window = sg.Window('Authentifizierung', layout)
+        
         while True:
                 event, values = window.read()
                 
                 if event == sg.WIN_CLOSED or event == 'Exit':
+                        print(event)
+                        print ('Exit Event')
+                        window.close()
+                        return_values = 'Exit'
                         break
                 elif event == '-OK-':
                         return_values = values
@@ -183,7 +188,7 @@ def information_window(information_text, header_text):
 
         while True:
             event, values = window.read()
-            if event == '-OK-': 
+            if event == '-OK-' or sg.WIN_CLOSED: # if user closes window or clicks cancel
                 
                 break
         window.close()
