@@ -184,14 +184,18 @@ class process_text_with_gemini():
                         
                         #response = self.generate(prompt_text_combined,max_output, temperature, location)
         #Convert to json and read result
-        json_tags = json.loads(response)
-        tags = json_tags
-        tags_list = []
-        for i in range(len(tags)):
-            try:
-                tags_list.append(tags[i]['Schlagwort'])
-            except:
-                pass
+        try:
+            json_tags = json.loads(response)
+            tags = json_tags
+            tags_list = []
+            for i in range(len(tags)):
+                try:
+                    tags_list.append(tags[i]['Schlagwort'])
+                except:
+                    pass
+        except:
+            tags_list = []
+
         return(tags_list)
     
     def set_ueberschrift(self, text_input, temperature = 0, max_output = 1000, location = "europe-west4"):
@@ -442,18 +446,21 @@ class process_text_with_gemini():
             print(person_role)
             #person_role_split = person_role.split('**')[1]
             role_found = False
-            for i in range(len(list_roles_possible)):
-                if list_roles_possible[i] in person_role:
-                    list_roles_final_llm.append(list_roles_possible[i])
-                    role_found = True
-                    break
-            if role_found == False:
+            try:
                 for i in range(len(list_roles_possible)):
                     if list_roles_possible[i] in person_role:
                         list_roles_final_llm.append(list_roles_possible[i])
                         role_found = True
                         break
-            if role_found == False:        
+                if role_found == False:
+                    for i in range(len(list_roles_possible)):
+                        if list_roles_possible[i] in person_role:
+                            list_roles_final_llm.append(list_roles_possible[i])
+                            role_found = True
+                            break
+                if role_found == False:        
+                    list_roles_final_llm.append(None)
+            except TypeError:
                 list_roles_final_llm.append(None)
         
         return(list_roles_final_llm)
@@ -625,6 +632,7 @@ class process_text_with_gemini():
 
         return(response)
     
+    
     def set_thema_institution(self, text_input, temperature = 0, max_output = 2048, location = "europe-west4"):
         """Defines institutions
         
@@ -791,6 +799,181 @@ class process_text_with_gemini():
         beschreibung_ereignis = json_beschreibung_ereignis['ereignis']['ereignis_beschreibung']
         return(beschreibung_ereignis)
     
+    def get_tag_realisierung(self, text_input, temperature = 0, max_output = 2048, location = "europe-west4"):
+
+        """Defines date for Ereignis
+        
+        Args:
+            text_input (str): Source transcript given to the LLM with fixed prompt.
+            temperature (float): Sets the creativeness of the model. The less, the more similar are two answers to the same prompt. Can be set between 0 and 1, 0 being the least creative. Defaults to 0.
+            max_output (int): Maximum number of tokens (~ number of words) of the LLMs response. Defaults to 1000.
+            location(str): Location of the Google server the request should be sent to, defaults to europe-west4 for Netherlands
+                
+        Returns:
+            response(json): The LLMs response in json format
+            
+            """
+        schema = """{"realisierung": {"realisierung_tag": int, "realisierung_monat": int, "realisierung_jahr": int, "realisierung_zusatz": str}}"""
+        prompt_text_combined = [f'An welchem Datum wurde die Aufnahme zu dem Audio zu diesem Transkript vermutlich gemacht oder an welchem Datum hat sie angefangen?', f'Text: {text_input}', 'Wenn Du das Datum nicht genau ermitteln kannst, dann gib als "realisierung_zusatz" "ca", "vor" oder "nach" aus, wobei diese Angaben sich auf das ausgegebene Datum beziehen. Sonst gib als "realisierung_zusatz" None aus. Antworte nur mit dem Datum in folgendem Format: TT.MM.JJJJ! Wenn Du aus dem Text kein Datum ermitteln kannst, gib "None" aus! Wenn Du für das vorgegebene Format für einen Teil des Datums keinen Wert ermitteln kannst, gib dafür "0" aus. Wenn Du zum Beispiel keinen Tag ermitteln kannst, dafür aber Jahr und Monat, gib das Datum in folgendem Format aus: 00.MM.JJJJ! Wenn Du zum Beispiel kein Jahr ermitteln kannst, dafür aber Monat und Tag, gib das Datum in folgendem Format aus: TT.MM.0000!', f'Using this json-Schema: {schema}']
+        got_response = False
+        while got_response == False:
+            try:
+                response = self.generate(prompt_text_combined,max_output, temperature, location)
+                got_response = True
+            except Exception as e: 
+                print(str(e), '5')
+                time.sleep(60)
+
+                if "Content" in str(e):
+                    response = 'Keine Zusatz-Info'
+                    got_response = True
+                #response = self.generate(prompt_text_combined,max_output, temperature, location)
+
+        #Decode Json
+        try:
+            json_realisierung_tag = json.loads(response)
+            realisierung_tag = json_realisierung_tag['realisierung']['realisierung_tag']
+            realisierung_monat = json_realisierung_tag['realisierung']['realisierung_monat']
+            realisierung_jahr = json_realisierung_tag['realisierung']['realisierung_jahr']
+            realisierung_zusatz = json_realisierung_tag['realisierung']['realisierung_zusatz']
+        except:
+            realisierung_tag = 0
+            realisierung_monat = 0
+            realisierung_jahr = 0
+            realisierung_zusatz = None
+        return(realisierung_tag, realisierung_monat, realisierung_jahr, realisierung_zusatz)
+    
+    def get_tag_realisierung_ende(self, text_input, temperature = 0, max_output = 2048, location = "europe-west4"):
+
+        """Defines date for Ereignis
+        
+        Args:
+            text_input (str): Source transcript given to the LLM with fixed prompt.
+            temperature (float): Sets the creativeness of the model. The less, the more similar are two answers to the same prompt. Can be set between 0 and 1, 0 being the least creative. Defaults to 0.
+            max_output (int): Maximum number of tokens (~ number of words) of the LLMs response. Defaults to 1000.
+            location(str): Location of the Google server the request should be sent to, defaults to europe-west4 for Netherlands
+                
+        Returns:
+            response(json): The LLMs response in json format
+            
+            """
+        schema = """{"realisierung": {"realisierung_tag": int, "realisierung_monat": int, "realisierung_jahr": int, "realisierung_zusatz": str}}"""
+        prompt_text_combined = [f'Wurde das Audio zu diesem Transkript vermutlich an mehreren Tagen aufgenommen? Wenn ja, wann endete die Aufnahme?', f'Transkript: {text_input}', 'Wenn Du das Datum nicht genau ermitteln kannst, dann gib als "realisierung_zusatz" "ca", "vor" oder "nach" aus, wobei diese Angaben sich auf das ausgegebene Datum beziehen. Sonst gib als "realisierung_zusatz" None aus. Antworte nur mit dem Datum in folgendem Format: TT.MM.JJJJ! Wenn Du aus dem Text kein Datum ermitteln kannst oder das Audio nur an einem Tag aufgenommen wurde, gib "None" aus! Wenn Du für das vorgegebene Format für einen Teil des Datums keinen Wert ermitteln kannst, gib dafür "0" aus. Wenn Du zum Beispiel keinen Tag ermitteln kannst, dafür aber Jahr und Monat, gib das Datum in folgendem Format aus: 00.MM.JJJJ! Wenn Du zum Beispiel kein Jahr ermitteln kannst, dafür aber Monat und Tag, gib das Datum in folgendem Format aus: TT.MM.0000!', f'Using this json-Schema: {schema}']
+        got_response = False
+        while got_response == False:
+            try:
+                response = self.generate(prompt_text_combined,max_output, temperature, location)
+                got_response = True
+            except Exception as e: 
+                print(str(e), '5')
+                time.sleep(60)
+
+                if "Content" in str(e):
+                    response = 'Keine Zusatz-Info'
+                    got_response = True
+                #response = self.generate(prompt_text_combined,max_output, temperature, location)
+
+        #Decode Json
+        try:
+            json_realisierung_tag = json.loads(response)
+            realisierung_tag = json_realisierung_tag['realisierung']['realisierung_tag']
+            realisierung_monat = json_realisierung_tag['realisierung']['realisierung_monat']
+            realisierung_jahr = json_realisierung_tag['realisierung']['realisierung_jahr']
+            realisierung_zusatz = json_realisierung_tag['realisierung']['realisierung_zusatz']
+        except:
+            realisierung_tag = 0
+            realisierung_monat = 0
+            realisierung_jahr = 0
+            realisierung_zusatz = 'None'
+        return(realisierung_tag, realisierung_monat, realisierung_jahr, realisierung_zusatz)
+
+    def get_realisierung_tag_context(self, text_input, ereignis_anfang_datum, ereignis_ende_datum, temperature = 0, max_output = 2048, location = "europe-west4"):
+
+        """Defines Description text for Ereignis
+        
+        Args:
+            text_input (str): Source transcript given to the LLM with fixed prompt.
+            ereignis_extracted(str): Single Ereignis that was extracted in previous step.
+            temperature (float): Sets the creativeness of the model. The less, the more similar are two answers to the same prompt. Can be set between 0 and 1, 0 being the least creative. Defaults to 0.
+            ereignis_anfang_datum(str): Date of Ereignis Start extracted by LLM in format DD.MM.TT
+            ereignis_ende_datum(str): Date of Ereignis End extracted by LLM in format DD
+            max_output (int): Maximum number of tokens (~ number of words) of the LLMs response. Defaults to 1000.
+            location(str): Location of the Google server the request should be sent to, defaults to europe-west4 for Netherlands
+                
+        Returns:
+            response(json): The LLMs response in json format
+            
+            """
+        schema = """{"ereignis_datum": {"ereignis_datum_beschreibung": str}"""
+        prompt_text_combined = [f'Wie stehen diese beiden Datums-Angaben mit dem Text im Verhältnis? Was haben diese Datumsangaben mit dem Text zu tun? Bei dem Text handelt es sich um ein Transkript eines Radiobeitrags oder ähnlichen Audios. Datum 1: {ereignis_anfang_datum}, Datum 2: {ereignis_ende_datum}', f'Text: {text_input}', 'Antworte kurz und prägnant!', f'Using this json-Schema: {schema}']
+        got_response = False
+        while got_response == False:
+            try:
+                response = self.generate(prompt_text_combined,max_output, temperature, location)
+                got_response = True
+            except Exception as e: 
+                print(str(e), '5')
+                time.sleep(60)
+
+                if "Content" in str(e):
+                    response = 'Keine Zusatz-Info'
+                    got_response = True
+                #response = self.generate(prompt_text_combined,max_output, temperature, location)
+        
+        #Decode Json
+        json_beschreibung_realisierung = json.loads(response)
+        beschreibung_realisierung_datum = json_beschreibung_realisierung['ereignis_datum']['ereignis_datum_beschreibung']
+        return(beschreibung_realisierung_datum)
+    
+    def get_ort_realisierung(self, text_input, temperature = 0, max_output = 2048, location = "europe-west4"):
+
+        """Defines date for Ereignis
+        
+        Args:
+            text_input (str): Source transcript given to the LLM with fixed prompt.
+            temperature (float): Sets the creativeness of the model. The less, the more similar are two answers to the same prompt. Can be set between 0 and 1, 0 being the least creative. Defaults to 0.
+            max_output (int): Maximum number of tokens (~ number of words) of the LLMs response. Defaults to 1000.
+            location(str): Location of the Google server the request should be sent to, defaults to europe-west4 for Netherlands
+                
+        Returns:
+            response(json): The LLMs response in json format
+            
+            """
+        schema = """{"orte": [{"ort": str, ort_kontext: str}, {"ort": str, ort_kontext: str}]}"""
+        prompt_text_combined = [f'An welchem Ort oder welchen Orten wurde diese Radioaufnahme gemacht. Gib jeden Ort nur einmal aus. Antworte nur mit einem Ort, wenn dieser klar aus dem Transkript ersichtlich ist. Es muss sich auch eindeutig um den Ort handeln, wo das Audio aufgenommen wurde!', 'Ein Ort, der nur erwähnt wurde im Transkript, aber keinen Bezug zum Aufnahmeort des Audios hat, soll nicht ausgegeben werden!', f'Transkript: {text_input}', 'Gib zusätzlich auch den Kontext des Ortes an, in dem er im Transkript vorkommt in einem kurzen, prägnanten Satz.', 'Wenn Du den Ort aus dem Transkript nicht ermitteln kannst, gib "None" aus!', 'Hinweis: Wenn es sich um eine Studioaufnahme handelt, ist der Ort aus dem Transkript meist nicht zu ermitteln!', f'Using this json-Schema: {schema}']
+        got_response = False
+        while got_response == False:
+            try:
+                response = self.generate(prompt_text_combined,max_output, temperature, location)
+                got_response = True
+            except Exception as e: 
+                print(str(e), '5')
+                time.sleep(60)
+
+                if "Content" in str(e):
+                    response = 'Keine Zusatz-Info'
+                    got_response = True
+                #response = self.generate(prompt_text_combined,max_output, temperature, location)
+
+        #Decode Json
+        orte_list = []
+        kontext_list = []
+        try:
+            json_realisierung_ort = json.loads(response)
+
+            print('DEBUG Realisierung Ort roh Response:', json_realisierung_ort)
+            realisierung_ort_alle = json_realisierung_ort['orte']
+            for r in range(len(realisierung_ort_alle)):
+                orte_list.append(realisierung_ort_alle[r]['ort'])
+                kontext_list.append(realisierung_ort_alle[r]['ort_kontext'])
+
+        except:
+            ()
+        
+        print('DEBUG Realisierung Ort ready Response Orte:', orte_list)
+        print('DEBUG Realisierung Ort ready Response Kontext:', kontext_list)
+        return(orte_list, kontext_list)
+    
     def get_tag_ereignis(self, text_input, ereignis_extracted, temperature = 0, max_output = 2048, location = "europe-west4"):
 
         """Defines date for Ereignis
@@ -807,7 +990,7 @@ class process_text_with_gemini():
             
             """
         schema = """{"ereignis": {"ereignis_name": str, "ereignis_tag": int, "ereignis_monat": int, "ereignis_jahr": int}}"""
-        prompt_text_combined = [f'An welchem Datum fand folgendes Ereignis laut Text statt: "{ereignis_extracted}"?', f'Text: {text_input}', 'Antworte nur mit dem Datum in folgendem Format: TT.MM.JJJJ! Wenn Du aus dem Text kein Datum ermitteln kannst, gib "None" aus! Wenn Du für das vorgegebene Format für einen Teil des Datums keinen Wert ermitteln kannst, gib dafür "0" aus. Wenn Du zum Beispiel keinen Tag ermitteln kannst, dafür aber Jahr und Monat, gib das Datum in folgendem Format aus: 00.MM.JJJJ! Wenn Du zum Beispiel kein Jahr ermitteln kannst, dafür aber Monat und Tag, gib das Datum in folgendem Format aus: TT.MM.0000!', f'Using this json-Schema: {schema}']
+        prompt_text_combined = [f'An welchem Datum fand folgendes Ereignis laut Text statt oder an welchem Datum hat es angefangen: "{ereignis_extracted}"?', f'Text: {text_input}', 'Antworte nur mit dem Datum in folgendem Format: TT.MM.JJJJ! Wenn Du aus dem Text kein Datum ermitteln kannst, gib "None" aus! Wenn Du für das vorgegebene Format für einen Teil des Datums keinen Wert ermitteln kannst, gib dafür "0" aus. Wenn Du zum Beispiel keinen Tag ermitteln kannst, dafür aber Jahr und Monat, gib das Datum in folgendem Format aus: 00.MM.JJJJ! Wenn Du zum Beispiel kein Jahr ermitteln kannst, dafür aber Monat und Tag, gib das Datum in folgendem Format aus: TT.MM.0000!', f'Using this json-Schema: {schema}']
         got_response = False
         while got_response == False:
             try:
@@ -833,6 +1016,49 @@ class process_text_with_gemini():
             ereignis_monat = 0
             ereignis_jahr = 0
         return(ereignis_tag, ereignis_monat, ereignis_jahr)
+    
+    def get_tag_ereignis_ende(self, text_input, ereignis_extracted, temperature = 0, max_output = 2048, location = "europe-west4"):
+
+        """Defines date for Ereignis
+        
+        Args:
+            text_input (str): Source transcript given to the LLM with fixed prompt.
+            ereignis_extracted(str): Single Ereignis that was extracted in previous step.
+            temperature (float): Sets the creativeness of the model. The less, the more similar are two answers to the same prompt. Can be set between 0 and 1, 0 being the least creative. Defaults to 0.
+            max_output (int): Maximum number of tokens (~ number of words) of the LLMs response. Defaults to 1000.
+            location(str): Location of the Google server the request should be sent to, defaults to europe-west4 for Netherlands
+                
+        Returns:
+            response(json): The LLMs response in json format
+            
+            """
+        schema = """{"ereignis": {"ereignis_name": str, "ereignis_tag": int, "ereignis_monat": int, "ereignis_jahr": int}}"""
+        prompt_text_combined = [f'An welchem Datum ist folgendes Ereignis zuende gegangen: "{ereignis_extracted}"?', f'Text: {text_input}', 'Antworte nur mit dem Datum in folgendem Format: TT.MM.JJJJ! Wenn Du aus dem Text kein End-Datum für das genannte Ereignis ermitteln kannst, gib "None" aus! Wenn Du für das vorgegebene Format für einen Teil des Datums keinen Wert ermitteln kannst, gib dafür "0" aus. Wenn Du zum Beispiel keinen Tag ermitteln kannst, dafür aber Jahr und Monat, gib das Datum in folgendem Format aus: 00.MM.JJJJ! Wenn Du zum Beispiel kein Jahr ermitteln kannst, dafür aber Monat und Tag, gib das Datum in folgendem Format aus: TT.MM.0000!', f'Using this json-Schema: {schema}']
+        got_response = False
+        while got_response == False:
+            try:
+                response = self.generate(prompt_text_combined,max_output, temperature, location)
+                got_response = True
+            except Exception as e: 
+                print(str(e), '5')
+                time.sleep(60)
+
+                if "Content" in str(e):
+                    response = 'Keine Zusatz-Info'
+                    got_response = True
+                #response = self.generate(prompt_text_combined,max_output, temperature, location)
+
+        #Decode Json
+        try:
+            json_beschreibung_ereignis = json.loads(response)
+            ereignis_tag_ende = json_beschreibung_ereignis['ereignis']['ereignis_tag']
+            ereignis_monat_ende = json_beschreibung_ereignis['ereignis']['ereignis_monat']
+            ereignis_jahr_ende = json_beschreibung_ereignis['ereignis']['ereignis_jahr']
+        except:
+            ereignis_tag_ende = 0
+            ereignis_monat_ende = 0
+            ereignis_jahr_ende = 0
+        return(ereignis_tag_ende, ereignis_monat_ende, ereignis_jahr_ende)
     
     def set_sprache(self, text_input, temperature = 0, max_output = 1000, location = "europe-west4"):
         """LLM-request for getting Sprachen for Transcript
