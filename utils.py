@@ -17,6 +17,7 @@ def call_hfdb(wsdl_path1 = None, wsdl_path2 = None):
         instance(str): Defines which HFDB instance is called.
     
     """
+    credentials = None
     authenticated = False
     while authenticated == False:
         try:
@@ -46,6 +47,35 @@ def call_hfdb(wsdl_path1 = None, wsdl_path2 = None):
             client = Client(wsdl=wsdl, transport=transport)
             client.service.getAK(f'http://hfdb.ard.de/{instance}/AudioKreation?id=4954916')
             authenticated = True
+            
         except:
-            ui.information_window('Noch mal versuchen?', 'Authentifizierung fehlgeschlagen!')
+            if credentials == 'Exit':
+                break
+            else:
+                ui.information_window('Noch mal versuchen?', 'Authentifizierung fehlgeschlagen!')
     return(client, instance)
+
+def split_name(full_name):
+    """
+    Teilt einen Namensstring in Vor- und Nachnamen auf.
+
+    Args:
+        full_name (str): Der vollständige Name als String.
+
+    Returns:
+        tuple: Ein Tupel bestehend aus Vorname und Nachname.
+    """
+    if full_name != 'N.N.':
+        name_parts = full_name.split()
+        if len(name_parts) >= 2:
+            first_name = name_parts[0]
+            last_name = ' '.join(name_parts[1:])
+        else:
+            first_name = full_name
+            last_name = ''
+    else:
+        first_name = ''
+        last_name = 'N.N.'
+    
+    return first_name, last_name
+
