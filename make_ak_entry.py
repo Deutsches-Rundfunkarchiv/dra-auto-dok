@@ -198,14 +198,9 @@ class make_proper_ak():
                         person_name_id = liste_urheber_korrigiert[0][j][1].split('-')[1]
                         urheber_single.person.normIdName = f'http://hfdb.ard.de/normdb/PersonenName?id={person_name_id}'
                     else:
-                        if len(liste_urheber_korrigiert[0][j][2].split(' '))>1:
-                            urheber_single.person.vorname = liste_urheber_korrigiert[0][j][2].split(' ')[0]    
-                            urheber_single.person.name = liste_urheber_korrigiert[0][j][2].replace(f'{urheber_single.person.vorname} ', '')
-                            urheber_single.person.normIdName = None
-                        else:
-                            urheber_single.person.vorname = None    
-                            urheber_single.person.name = liste_urheber_korrigiert[0][j][2]
-                            urheber_single.person.normIdName = None
+                        urheber_single.person.vorname = liste_urheber_korrigiert[0][j][3]    
+                        urheber_single.person.name = liste_urheber_korrigiert[0][j][2]
+                        urheber_single.person.normIdName = None
                     
                     #Geburts und Todesdatum rauswerfen!
                     urheber_single.person.geburtsdatum = None
@@ -309,15 +304,9 @@ class make_proper_ak():
                         person_name_id = liste_personen_korrigiert[j][1].split('-')[1]
                         thema_person_single.normIdName = f'http://hfdb.ard.de/normdb/PersonenName?id={person_name_id}'
                     else:
-                        if len(liste_personen_korrigiert[j][2].split(' '))>1:
-                            thema_person_single.vorname = liste_personen_korrigiert[j][2].split(' ')[0]
-                            thema_person_single.name = liste_personen_korrigiert[j][2].replace(f'{thema_person_single.vorname} ', '')
-                            thema_person_single.normIdName = None
-                        else:
-                            thema_person_single.vorname = None
-                            thema_person_single.name = liste_personen_korrigiert[j][2]
-                            thema_person_single.normIdName = None
-
+                        thema_person_single.vorname = liste_personen_korrigiert[j][3]
+                        thema_person_single.name = liste_personen_korrigiert[j][2]
+                        thema_person_single.normIdName = None
 
                     list_thema_person_hfdb_ready.append(copy.deepcopy(thema_person_single))
         else:
@@ -325,7 +314,6 @@ class make_proper_ak():
 
         return(list_thema_person_hfdb_ready)
     
-
     def make_mitwirkende_suggest(self, transcript, persons_filtered, persons_descriptions, path_list_all_entities_available):
         """Make LLM Suggestion for Mitwirkende
         Args:
@@ -389,8 +377,6 @@ class make_proper_ak():
         
         wert_id = list_types_entities['Wert_ID']
 
-
-
         #ndb_comparison_ref = compare_with_ndb_vocabulary(path_ref_ndb_person_list_source, path_ref_ndb_person_list_sorted)
 
         #proper_name = ndb_comparison_ref.compare_direct_with_proper_list(list_persons_raw)
@@ -416,15 +402,12 @@ class make_proper_ak():
                         person_name_id = liste_personen_korrigiert[0][j][1].split('-')[1]
                         besetzung_single.mitwirkender.person.normIdName = f'http://hfdb.ard.de/normdb/PersonenName?id={person_name_id}'
                     else:
-                        if len(liste_personen_korrigiert[0][j][2].split(' ')) > 1:
-                            besetzung_single.mitwirkender.person.vorname = liste_personen_korrigiert[0][j][2].split(' ')[0]
-                            besetzung_single.mitwirkender.person.name = liste_personen_korrigiert[0][j][2].replace(f'{besetzung_single.mitwirkender.person.vorname} ', '')
-                            besetzung_single.mitwirkender.person.normIdName = None
-                        else:
-                            besetzung_single.mitwirkender.person.vorname = None
-                            besetzung_single.mitwirkender.person.name = liste_personen_korrigiert[0][j][2]
-                            besetzung_single.mitwirkender.person.normIdName = None
+                        besetzung_single.mitwirkender.person.vorname = liste_personen_korrigiert[0][j][3]
+                        besetzung_single.mitwirkender.person.name = liste_personen_korrigiert[0][j][2]
+                        besetzung_single.mitwirkender.person.normIdName = None
 
+                    if liste_personen_korrigiert[0][j][4] != '' and liste_personen_korrigiert[0][j][4] != ' ':
+                        besetzung_single.mitwirkender.bemerkung = liste_personen_korrigiert[0][j][4]
                     
                     print('Personen korrigiert:', liste_personen_korrigiert)
                     try:
@@ -498,6 +481,285 @@ class make_proper_ak():
         
         return(orte_list_final)
     
+    def make_realisierung_datum_suggest(self, transcript_text):
+        """Suggests Thema Ereignis and its Date
+        
+        Args:
+            transcript_text(str): Audio Transcript, that Realisierung data is extracted from by LLM
+
+        Returns:
+            realisierung_tag(int): Day of Start of Recording
+            realisierung_monat(int): Month of Start of Recording
+            realisierung_jahr (int): Year of Start of Recording
+            realisierung_zusatz(str): Additional Comment for Recording like "vor", "nach" - added from list
+            realisierung_tag_ende(int): Day of End of Recording
+            realisierung_monat_ende(int): Month of End of Recording
+            realisierung_jahr_ende (int): Year of End of Recording
+            realisierung_ende_zusatz(str): Additional Comment for Recording like "vor", "nach" - added from list
+        
+        """
+      
+        realisierung_datum = self.google_api.get_tag_realisierung(transcript_text)
+        realisierung_datum_ende = self.google_api.get_tag_realisierung_ende(transcript_text)
+
+        realisierung_anfang_combined = f'{realisierung_datum[0]}.{realisierung_datum[1]}.{realisierung_datum[2]}'
+
+        realisierung_ende_combined = f'{realisierung_datum_ende[0]}.{realisierung_datum_ende[1]}.{realisierung_datum_ende[2]}'
+
+        realisierung_context = self.google_api.get_realisierung_tag_context(transcript_text, realisierung_anfang_combined, realisierung_ende_combined)
+        
+        try:
+            realisierung_tag = realisierung_datum[0]
+            realisierung_monat = realisierung_datum[1]
+            realisierung_jahr = realisierung_datum[2]
+            realisierung_zusatz = realisierung_datum[3]
+            realisierung_tag_ende = realisierung_datum_ende[0]
+            realisierung_monat_ende = realisierung_datum_ende[1]
+            realisierung_jahr_ende = realisierung_datum_ende[2]
+            realisierung_ende_zusatz = realisierung_datum_ende[3]
+            
+        except:
+            realisierung_tag = None
+            realisierung_monat = None
+            realisierung_jahr = None
+            realisierung_zusatz = None
+            realisierung_tag_ende = None
+            realisierung_monat_ende = None
+            realisierung_jahr_ende = None
+            realisierung_ende_zusatz = None
+        
+        return realisierung_tag, realisierung_monat, realisierung_jahr, realisierung_zusatz, realisierung_tag_ende, realisierung_monat_ende, realisierung_jahr_ende, realisierung_ende_zusatz, realisierung_context
+    
+    def make_realisierung_datum_entry(self, realisierung_datum_korrigiert):
+        """Makes ready entry for Realisierung Datum
+        
+        Args:
+            realisierung_datum_korrigiert(list): Raw data for realisierung datum coming from frontend, that contains date data.
+
+        Returns:
+            realisierungdatum(json_like): Prepared data ready to be injected into HFDB entry for dates of Realisierung-Datum.
+        
+        """
+        #Norm-Daten-Realisierungs-Zusatz vorbereiten:
+        zusatz_nach = {
+                    'kurzbezeichnung': 'n',
+                    'langbezeichnung': 'nach',
+                    'normId': 'http://hfdb.ard.de/normdb/Wert?id=1091'
+                }
+        zusatz_circa = {
+                    'kurzbezeichnung': 'c',
+                    'langbezeichnung': 'circa',
+                    'normId': 'http://hfdb.ard.de/normdb/Wert?id=1089'
+                }
+        zusatz_exakt = {
+                    'kurzbezeichnung': 'e',
+                    'langbezeichnung': 'exakt',
+                    'normId': 'http://hfdb.ard.de/normdb/Wert?id=1092'
+                }
+        zusatz_vor = {
+                    'kurzbezeichnung': 'v',
+                    'langbezeichnung': 'vor',
+                    'normId': 'http://hfdb.ard.de/normdb/Wert?id=1090'
+                }
+
+
+        print('DEBUG REALISIERUNG DATUM:', realisierung_datum_korrigiert)
+        if len(realisierung_datum_korrigiert) >0:
+            if realisierung_datum_korrigiert[0] == '0' or realisierung_datum_korrigiert[0] == None or realisierung_datum_korrigiert[0] == '' or realisierung_datum_korrigiert[0] == '00':
+                day_realisierung = None
+            else:
+                day_realisierung = realisierung_datum_korrigiert[0]
+
+            if realisierung_datum_korrigiert[1] == '0' or realisierung_datum_korrigiert[1] == None or realisierung_datum_korrigiert[1] == '00' or realisierung_datum_korrigiert[1] == '':
+                month_realisierung = None
+            else:
+                month_realisierung = realisierung_datum_korrigiert[1]
+            
+            if realisierung_datum_korrigiert[2] == '0' or realisierung_datum_korrigiert[2] == None or realisierung_datum_korrigiert[2] == '' or realisierung_datum_korrigiert[2] == '00' or realisierung_datum_korrigiert[2] == '0000' or realisierung_datum_korrigiert[2] == 0:
+                year_realisierung = None
+            else:
+                year_realisierung = realisierung_datum_korrigiert[2]
+
+            if realisierung_datum_korrigiert[3] == 'None' or realisierung_datum_korrigiert[3] == None or 'None' in realisierung_datum_korrigiert[3]:
+                zusatz_realisierung = None
+            elif 'nach' in realisierung_datum_korrigiert[3]:
+                zusatz_realisierung = zusatz_nach
+            elif 'circa' in realisierung_datum_korrigiert[3]:
+                zusatz_realisierung = zusatz_circa
+            elif 'exakt' in realisierung_datum_korrigiert[3]:
+                zusatz_realisierung = zusatz_exakt
+            elif 'vor' in realisierung_datum_korrigiert[3]:
+                zusatz_realisierung = zusatz_vor
+            else:
+                zusatz_realisierung = None
+
+            if realisierung_datum_korrigiert[4] == '0' or realisierung_datum_korrigiert[4] == None or realisierung_datum_korrigiert[4] == '' or realisierung_datum_korrigiert[4] == '00':
+                day_realisierung_ende = None
+            else:
+                day_realisierung_ende = realisierung_datum_korrigiert[4]
+
+            if realisierung_datum_korrigiert[5] == '0' or realisierung_datum_korrigiert[5] == None or realisierung_datum_korrigiert[5] == '00' or realisierung_datum_korrigiert[5] == '':
+                month_realisierung_ende = None
+            else:
+                month_realisierung_ende = realisierung_datum_korrigiert[5]
+            
+            if realisierung_datum_korrigiert[6] == '0' or realisierung_datum_korrigiert[6] == None or realisierung_datum_korrigiert[6] == '' or realisierung_datum_korrigiert[6] == '00' or realisierung_datum_korrigiert[6] == '0000' or realisierung_datum_korrigiert[6] == 0:
+                year_realisierung_ende = None
+            else:
+                year_realisierung_ende = realisierung_datum_korrigiert[6]
+
+            if realisierung_datum_korrigiert[7] == 'None' or realisierung_datum_korrigiert[7] == None or 'None' in realisierung_datum_korrigiert[7]:
+                zusatz_realisierung_ende = None
+            elif 'nach' in realisierung_datum_korrigiert[7]:
+                zusatz_realisierung_ende = zusatz_nach
+            elif 'circa' in realisierung_datum_korrigiert[7]:
+                zusatz_realisierung_ende = zusatz_circa
+            elif 'exakt' in realisierung_datum_korrigiert[7]:
+                zusatz_realisierung_ende = zusatz_exakt
+            elif 'vor' in realisierung_datum_korrigiert[7]:
+                zusatz_realisierung_ende = zusatz_vor
+            else:
+                zusatz_realisierung_ende = None
+
+            if year_realisierung != None and day_realisierung == None:
+                day_realisierung = 0
+
+            if year_realisierung != None and month_realisierung == None:
+                month_realisierung = 0
+
+            if year_realisierung_ende != None and day_realisierung_ende == None:
+                day_realisierung_ende = 0
+
+            if year_realisierung_ende != None and month_realisierung_ende == None:
+                month_realisierung_ende = 0
+
+            if month_realisierung == 0 and year_realisierung == None:
+                realisierung_single_datum = None
+            elif year_realisierung == None:
+                realisierung_single_datum = None
+            elif (month_realisierung_ende == 0 and year_realisierung_ende == None) or (day_realisierung == day_realisierung_ende and month_realisierung == month_realisierung_ende and year_realisierung == year_realisierung_ende) or (year_realisierung_ende == None and day_realisierung_ende == None and month_realisierung_ende == None):
+                
+                realisierung_single_datum = {
+                    'beginn': {
+                        'day': day_realisierung,
+                        'month': month_realisierung,
+                        'year': year_realisierung,
+                        'datumszusatz': zusatz_realisierung
+                    },
+                    'bemerkung': None,
+                    'ende': None
+                }
+            else:
+                realisierung_single_datum = {
+                    'beginn': {
+                        'day': day_realisierung,
+                        'month': month_realisierung,
+                        'year': year_realisierung,
+                        'datumszusatz': zusatz_realisierung
+                    },
+                    'bemerkung': None,
+                    'ende': {
+                        'day': day_realisierung_ende,
+                        'month': month_realisierung_ende,
+                        'year': year_realisierung_ende,
+                        'datumszusatz': zusatz_realisierung_ende
+                    }
+                }
+        else:
+            realisierung_single_datum = None
+        
+        print('DEBUG realisierung:', realisierung_single_datum)
+        
+        return(realisierung_single_datum)
+    
+    def make_realisierung_ort_suggest(self, transcript_text):
+        """Suggests Thema Ereignis and its Date
+        
+        Args:
+            transcript_text(str): Audio Transcript, that Realisierung data is extracted from by LLM
+
+        Returns:
+            realisierung_ort(list): Suggest for Realisierung Ort
+            realisierung_kontext(list): List of transcript contexts for Realisierung Orte
+        
+        """
+
+        realisierung_ort, realisierung_kontext = self.google_api.get_ort_realisierung(transcript_text)
+        
+        return(realisierung_ort, realisierung_kontext)
+
+    def make_realisierung_ort_entry(self, realort_return):
+        """Makes Realisierung Ort Entry
+        
+        Args:
+            realort_return(str): Return of Realisierung Ort from Interface
+
+        Returns:
+            realisierung_ort(str): Entry for Realisierung Ort
+        
+        """
+        if "None" not in realort_return and realort_return != '' and realort_return != ' ':
+            realisierung_ort_final = realort_return
+        else:
+            realisierung_ort_final = None
+        
+        return(realisierung_ort_final)
+    
+    def make_realisierung_typ_entry(self, realtyp_return):
+        """Makes entry for Realisierung Typ from frontend data
+        
+        Args:
+            realtyp_return(str): Raw data from frontend regarding Realisierung Typ
+
+        Returns:
+            realisierung_typ_entry(json_like): Json like part entry for AK for part Realisierung Typ.
+        
+        """
+        print('DEBUG Realtyp make_ak_entry_Input_from_Frontend:', realtyp_return)
+        if 'Mitschnitt' in realtyp_return:
+            realisierung_typ_entry = {
+                'kurzbezeichnung': '10',
+                'langbezeichnung': 'Mitschnitt / Sendemitschnitt',
+                'normId': 'http://hfdb.ard.de/normdb/Wert?id=1662'
+            } 
+        elif 'unbekannt' in realtyp_return:
+            realisierung_typ_entry = {
+                'kurzbezeichnung': '00',
+                'langbezeichnung': 'unbekannt',
+                'normId': 'http://hfdb.ard.de/normdb/Wert?id=1669'
+            }
+        elif 'Studioproduktion' in realtyp_return:
+            realisierung_typ_entry = {
+                'kurzbezeichnung': '20',
+                'langbezeichnung': 'Studioproduktion',
+                'normId': 'http://hfdb.ard.de/normdb/Wert?id=1668'
+            }
+        elif 'Live' in realtyp_return and 'Aufnahme' in realtyp_return:
+            realisierung_typ_entry = {
+                'kurzbezeichnung': '30',
+                'langbezeichnung': 'Live-Aufnahme',
+                'normId': 'http://hfdb.ard.de/normdb/Wert?id=1769'
+            }
+        elif 'Live' in realtyp_return and 'mit' in realtyp_return and 'Beifall' in realtyp_return:
+            realisierung_typ_entry = {
+                'kurzbezeichnung': '31',
+                'langbezeichnung': 'Live mit Beifall',
+                'normId': 'http://hfdb.ard.de/normdb/Wert?id=4936'
+            }
+
+        elif 'Live' in realtyp_return and 'ohne' in realtyp_return and 'Beifall' in realtyp_return:
+            realisierung_typ_entry = {
+                'kurzbezeichnung': '32',
+                'langbezeichnung': 'Live ohne Beifall',
+                'normId': 'http://hfdb.ard.de/normdb/Wert?id=4937'
+            }
+        else:
+            realisierung_typ_entry = None
+
+        print('DEBUG Realtyp make_ak_entry_Return to AK-Makers:', realisierung_typ_entry)
+
+        return realisierung_typ_entry
+    
     def make_ereignis_suggest(self, transcript_text):
         """Suggests Thema Ereignis and its Date
         
@@ -518,9 +780,13 @@ class make_proper_ak():
         ereignis_tage = []
         ereignis_monate = []
         ereignis_jahre = []
+        ereignis_tage_ende = []
+        ereignis_monate_ende = []
+        ereignis_jahre_ende = []
         for ereignis in ereignis_sorted_single:
             ereignis_beschreibungen.append(self.google_api.get_beschreibung_ereignis(transcript_text, ereignis))
             ereignis_datum = self.google_api.get_tag_ereignis(transcript_text, ereignis)
+            ereignis_datum_ende = self.google_api.get_tag_ereignis_ende(transcript_text, ereignis)
             print('DEBUG EREIGNIS DATUM:', ereignis_datum)
             try:
                 ereignis_tag = ereignis_datum[0]
@@ -529,12 +795,21 @@ class make_proper_ak():
                 ereignis_tage.append(ereignis_tag)
                 ereignis_monate.append(ereignis_month)
                 ereignis_jahre.append(ereignis_jahr)
+                ereignis_tag_ende = ereignis_datum_ende[0]
+                ereignis_month_ende = ereignis_datum_ende[1]
+                ereignis_jahr_ende = ereignis_datum_ende[2]
+                ereignis_tage_ende.append(ereignis_tag_ende)
+                ereignis_monate_ende.append(ereignis_month_ende)
+                ereignis_jahre_ende.append(ereignis_jahr_ende)
             except:
                 ereignis_tage.append(None)
                 ereignis_monate.append(None)
                 ereignis_jahre.append(None)
+                ereignis_tage_ende.append(None)
+                ereignis_monate_ende.append(None)
+                ereignis_jahre_ende.append(None)
         
-        return ereignis_sorted_single, ereignis_beschreibungen, ereignis_tage, ereignis_monate, ereignis_jahre
+        return ereignis_sorted_single, ereignis_beschreibungen, ereignis_tage, ereignis_monate, ereignis_jahre, ereignis_tage_ende, ereignis_monate_ende, ereignis_jahre_ende
     
     def make_thema_ereignis_entry(self, ereignis_data_roh):
         """Makes List of Ereignisse and Returns them
@@ -580,11 +855,26 @@ class make_proper_ak():
             else:
                 year_ereignis = liste_ereignis_korrigiert[t][3]
 
+            if liste_ereignis_korrigiert[t][4] == '0' or liste_ereignis_korrigiert[t][4] == None or liste_ereignis_korrigiert[t][4] == '' or liste_ereignis_korrigiert[t][4] == '00':
+                day_ereignis_ende = 0
+            else:
+                day_ereignis_ende = liste_ereignis_korrigiert[t][4]
+
+            if liste_ereignis_korrigiert[t][5] == '0' or liste_ereignis_korrigiert[t][5] == None or liste_ereignis_korrigiert[t][5] == '00' or liste_ereignis_korrigiert[t][5] == '':
+                month_ereignis_ende = 0
+            else:
+                month_ereignis_ende = liste_ereignis_korrigiert[t][5]
+            
+            if liste_ereignis_korrigiert[t][6] == '0' or liste_ereignis_korrigiert[t][6] == None or liste_ereignis_korrigiert[t][6] == '' or liste_ereignis_korrigiert[t][6] == '00' or liste_ereignis_korrigiert[t][6] == '0000' or liste_ereignis_korrigiert[t][6] == 0:
+                year_ereignis_ende = None
+            else:
+                year_ereignis_ende = liste_ereignis_korrigiert[t][6]
+
             if month_ereignis == 0 and year_ereignis == None:
                 thema_ereignis_single_datum = None
             elif year_ereignis == None:
                 thema_ereignis_single_datum = None
-            else:
+            elif month_ereignis_ende == 0 and year_ereignis_ende == None:
                 
                 thema_ereignis_single_datum = {
                     'beginn': {
@@ -595,6 +885,22 @@ class make_proper_ak():
                     },
                     'bemerkung': None,
                     'ende': None
+                }
+            else:
+                thema_ereignis_single_datum = {
+                    'beginn': {
+                        'day': day_ereignis,
+                        'month': month_ereignis,
+                        'year': year_ereignis,
+                        'datumszusatz': None
+                    },
+                    'bemerkung': None,
+                    'ende': {
+                        'day': day_ereignis_ende,
+                        'month': month_ereignis_ende,
+                        'year': year_ereignis_ende,
+                        'datumszusatz': None
+                    }
                 }
             themaEreignisDatum_list.append(thema_ereignis_single_datum)
             print('DEBUG EREIGNIS:', thema_ereignis_single_datum)
@@ -978,7 +1284,7 @@ class make_proper_ak():
         return(current_date)
     
 
-    def make_ak_suggests_standard(self, transcript, start, urheber_suggest, mitwirkende_suggest, title_suggest, zusammenfassung_suggest, topic_persons, topic_persons_description, ndb_thema_persons_suggest, orte_suggest, institutionen_suggest, ereignis_suggest, audiofile_path, audiofile_name, file_ohne_speech, gattungen_suggest, genre_suggest, sprachen_suggest, schlagworte_suggest, audioraum_darstellung_global_suggest):
+    def make_ak_suggests_standard(self, transcript, start, urheber_suggest, mitwirkende_suggest, title_suggest, zusammenfassung_suggest, topic_persons, topic_persons_description, ndb_thema_persons_suggest, orte_suggest, institutionen_suggest, ereignis_suggest, audiofile_path, audiofile_name, file_ohne_speech, gattungen_suggest, genre_suggest, sprachen_suggest, schlagworte_suggest, audioraum_darstellung_global_suggest, realisierung_datum_suggest, realisierung_ort_suggest, realisierung_kontext, realisierung_typ_suggest):
         """Standard way of making suggestions and create Control window for entities
         Args:
             transcript(str): Whisper Transcript of Audio
@@ -1001,13 +1307,15 @@ class make_proper_ak():
             sprachen_suggest (list): List of languages  for audio that is suggested to the user in the interface.
             schlagworte_suggest(list): List for tags to suggest for user.
             audioraum_darstellung_global_suggest (json-like): This is set for all AKs at first input window
+            realisierung_datum_suggest(list): List of party for Realisierung
+            realisierung_ort_suggest(str): String or Aufnahmeorte
 
             returns:
                 values_corrected(list): List of correted data based on Transkript and  corrected by user in Frontend.                                                                                                                                                                                                                                                                                                                                 
         """
         ui_main = ui_correction() # Main user interface to correct the data.
         
-        values_corrected = ui_main.ak_correction_menu(transcript, start, urheber_suggest[0], urheber_suggest[1], urheber_suggest[2], urheber_suggest[3], urheber_suggest[4], mitwirkende_suggest[0], mitwirkende_suggest[1], mitwirkende_suggest[2], mitwirkende_suggest[3],mitwirkende_suggest[4], title_suggest, zusammenfassung_suggest, topic_persons, topic_persons_description, ndb_thema_persons_suggest, orte_suggest[0], orte_suggest[1], orte_suggest[2], institutionen_suggest, ereignis_suggest, audiofile_path, file_ohne_speech, audiofile_name, gattungen_suggest, genre_suggest, sprachen_suggest[0], sprachen_suggest[1], schlagworte_suggest[0], schlagworte_suggest[1], audioraum_darstellung_global_suggest)
+        values_corrected = ui_main.ak_correction_menu(transcript, start, urheber_suggest[0], urheber_suggest[1], urheber_suggest[2], urheber_suggest[3], urheber_suggest[4], mitwirkende_suggest[0], mitwirkende_suggest[1], mitwirkende_suggest[2], mitwirkende_suggest[3],mitwirkende_suggest[4], title_suggest, zusammenfassung_suggest, topic_persons, topic_persons_description, ndb_thema_persons_suggest, orte_suggest[0], orte_suggest[1], orte_suggest[2], institutionen_suggest, ereignis_suggest, audiofile_path, file_ohne_speech, audiofile_name, gattungen_suggest, genre_suggest, sprachen_suggest[0], sprachen_suggest[1], schlagworte_suggest[0], schlagworte_suggest[1], audioraum_darstellung_global_suggest, realisierung_datum_suggest, realisierung_ort_suggest, realisierung_kontext, realisierung_typ_suggest)
 
         return values_corrected
     
@@ -1039,8 +1347,11 @@ class make_proper_ak():
             sprachen_suggest(list): List of languages to show to the user
             schlagworte_suggest (list): List of tags to show to the user
         """
-
-        gattungen_suggest = multimodal_data
+        print('DEBUG MULTIMODAL DATA ALL:', multimodal_data)
+        gattungen_suggest = multimodal_data[0]
+        print('DEBUG Gattungen Suggest:', gattungen_suggest)
+        realisierung_typ_suggest = multimodal_data[1]
+        print('DEBUG Realisierung Typ Suggest:', realisierung_typ_suggest)
         genre_suggest = self.make_genre_suggest(audiofile_path, f'{audiofile_path}\\yamnet_files\\{audiofile_name}_6_Summary_Music_Speech_filtered.xlsx', audiofile_path, audiofile_name)
 
         #if len(transcript)<32000:
@@ -1060,6 +1371,10 @@ class make_proper_ak():
         ereignis_suggest = self.make_ereignis_suggest(transcript)
         sprachen_suggest = self.make_sprache_suggest(transcript)
         schlagworte_suggest = self.make_schlagworte_suggest(transcript)
+        realisierung_datum_suggest = self.make_realisierung_datum_suggest(transcript)
+        realisierung_ort_suggest_all = self.make_realisierung_ort_suggest(transcript)
+        realisierung_ort_suggest = realisierung_ort_suggest_all[0]
+        realisierung_ort_kontext_suggest = realisierung_ort_suggest_all[1]
 
         #else:
           #  print('Transcript zu lang - wird aufgeteilt')
@@ -1098,7 +1413,7 @@ class make_proper_ak():
                # if ort not in orte_suggest:
                 #    orte_suggest.append(ort)
 
-        return(gattungen_suggest, genre_suggest, zusammenfassung_suggest, title_suggest, orte_suggest, urheber_suggest, mitwirkende_suggest, sprechende, sprechende_description, thema_person, thema_person_description, ndb_thema_persons_suggest, institutionen_suggest, ereignis_suggest, sprachen_suggest, schlagworte_suggest)
+        return(gattungen_suggest, genre_suggest, zusammenfassung_suggest, title_suggest, orte_suggest, urheber_suggest, mitwirkende_suggest, sprechende, sprechende_description, thema_person, thema_person_description, ndb_thema_persons_suggest, institutionen_suggest, ereignis_suggest, sprachen_suggest, schlagworte_suggest, realisierung_datum_suggest, realisierung_ort_suggest, realisierung_ort_kontext_suggest, realisierung_typ_suggest)
 
 
     def make_ak_v1_v2(self, values_corrected, path_list_all_entities_available, path_list_all_entities_available_urheber, ebene_geflecht, kompilationstyp):
@@ -1117,7 +1432,10 @@ class make_proper_ak():
             new_ak = self.hfdb_client.service.getAK(self.ref_ak_2)
             new_ak.hfdbId = None
             new_ak.urheber = self.make_urheber_entry(values_corrected[9], path_list_all_entities_available_urheber)
-            
+            new_ak.audioereignisOrt = self.make_realisierung_ort_entry(values_corrected[16])
+            new_ak.audioereignisZeitraum = self.make_realisierung_datum_entry(values_corrected[15])
+            new_ak.audioereignisTyp = self.make_realisierung_typ_entry(values_corrected[17])
+            print('DEBUG audioereignisTyp new_AK:', new_ak.audioereignisTyp)
             new_ak.besetzungen = self.make_mitwirkende_entry(values_corrected[0],  path_list_all_entities_available)
             new_ak.titel = self.make_titel_korrigiert(values_corrected[3])
             if values_corrected[2] == '': #Wenn Deskriptionstext nicht vorhanden, dann Datum komplett rausnehmen.
@@ -1184,10 +1502,10 @@ class make_proper_ak():
             #print(new_ak)
             new_ak_id = self.hfdb_client.service.insertAK(new_ak)
             #Urheber needs to be added after AK exists - Bug in API?
-            #new_ak = self.hfdb_client.service.getAK(new_ak_id)
-            #new_ak.urheber = self.make_urheber_entry(values_corrected[9], #path_list_all_entities_available_urheber)
-            #new_ak.hfdbId = new_ak.hfdbId.split('&version=')[0]
-            #self.hfdb_client.service.updateAK(new_ak)
+            new_ak = self.hfdb_client.service.getAK(new_ak_id)
+            new_ak.audioereignisTyp = self.make_realisierung_typ_entry(values_corrected[17])#path_list_all_entities_available_urheber)
+            new_ak.hfdbId = new_ak.hfdbId.split('&version=')[0]
+            self.hfdb_client.service.updateAK(new_ak)
 
         else:
             new_ak_id = None
@@ -1211,7 +1529,11 @@ class make_proper_ak():
             new_ak = self.hfdb_client.service.getAK(self.ref_ak_2)
             new_ak.hfdbId = None
             new_ak.urheber = self.make_urheber_entry(values_corrected[9], path_list_all_entities_available_urheber)
+            new_ak.audioereignisOrt = self.make_realisierung_ort_entry(values_corrected[16])
+            new_ak.audioereignisZeitraum = self.make_realisierung_datum_entry(values_corrected[15])
+            new_ak.audioereignisTyp = self.make_realisierung_typ_entry(values_corrected[17])
             #Urheber needs to be added after AK exists - Bug in API?
+            print('DEBUG audioereignisTyp new_AK:', new_ak.audioereignisTyp)
             new_ak.besetzungen = self.make_mitwirkende_entry(values_corrected[0], path_list_all_entities_available)
             new_ak.titel = self.make_titel_korrigiert(values_corrected[3])
             new_ak.deskriptionsText = self.make_zusammenfassung_korrigiert_hfdb(values_corrected[2])
@@ -1276,6 +1598,10 @@ class make_proper_ak():
             new_ak = self.hfdb_client.service.getAK(self.ref_ak_2)
             new_ak.hfdbId = None
             urheber = self.make_urheber_entry(values_corrected[9], path_list_all_entities_available_urheber)
+            new_ak.audioereignisOrt = self.make_realisierung_ort_entry(values_corrected[16])
+            new_ak.audioereignisZeitraum = self.make_realisierung_datum_entry(values_corrected[15])
+            new_ak.audioereignisTyp = self.make_realisierung_typ_entry(values_corrected[17])
+            print('DEBUG audioereignisTyp new_AK:', new_ak.audioereignisTyp)
             print('DEBUG AK_MAKER_03')
             print(urheber)
             #Urheber needs to be added after AK exists - Bug in API?
@@ -1353,18 +1679,18 @@ class make_proper_ak():
         
         #Sonderfall: Neue AK wird als Teil einer neuen Kompilation angelegt, wobei die KI-generierten Daten auf die AK einzahlen und nicht auf die Kompilation, die wiederum eine leere Maske erhält
         if status_geflecht_final == 'new_komp_no_ki':
-            gattungen_suggest, genre_suggest, zusammenfassung_suggest, title_suggest, orte_suggest, urheber_suggest, mitwirkende_suggest, sprechende, sprechende_description, topic_persons, topic_persons_description, ndb_thema_persons_suggest, institutionen_suggest, ereignis_suggest, sprachen_suggest, schlagworte_suggest = self.prepare_ak_data_from_raw_data(transcript, multimodal_data, audiofile_path, audiofile_name, path_list_all_entities_available, path_list_all_entities_available_urheber)
+            gattungen_suggest, genre_suggest, zusammenfassung_suggest, title_suggest, orte_suggest, urheber_suggest, mitwirkende_suggest, sprechende, sprechende_description, topic_persons, topic_persons_description, ndb_thema_persons_suggest, institutionen_suggest, ereignis_suggest, sprachen_suggest, schlagworte_suggest, realisierung_datum_suggest, realisierung_ort_suggest, realisierung_ort_kontext, realisierung_typ_suggest = self.prepare_ak_data_from_raw_data(transcript, multimodal_data, audiofile_path, audiofile_name, path_list_all_entities_available, path_list_all_entities_available_urheber)
             
-            values_corrected_komp = self.make_ak_suggests_standard(transcript, start,[[],[],[],[],[]], [[],[],[],[],[]], 'KOMPILATIONS-DATEN HIER SELBST BESTIMMEN', '', [], [], [[],[]], [[],[],[]], [[],[],[]], [[],[],[],[],[]], audiofile_path, audiofile_name, file_filtered, ['Wort'], genre_suggest, [[],[]], [[],[]], audioraum_darstellung_global_suggest)
+            values_corrected_komp = self.make_ak_suggests_standard(transcript, start,[[],[],[],[],[],[]], [[],[],[],[],[]], 'KOMPILATIONS-DATEN HIER SELBST BESTIMMEN', '', [], [], [], [[],[],[]], [[],[],[]], [[],[],[],[],[],[],[],[]], audiofile_path, audiofile_name, file_filtered, ['Wort'], genre_suggest, [[],[]], [[],[]], audioraum_darstellung_global_suggest, [], [], [], '')
             
-            values_corrected_korpus = self.make_ak_suggests_standard(transcript, start, urheber_suggest, mitwirkende_suggest, title_suggest, zusammenfassung_suggest, topic_persons, topic_persons_description, ndb_thema_persons_suggest, orte_suggest, institutionen_suggest,ereignis_suggest, audiofile_path, audiofile_name, file_filtered, gattungen_suggest, genre_suggest, sprachen_suggest, schlagworte_suggest, audioraum_darstellung_global_suggest)
+            values_corrected_korpus = self.make_ak_suggests_standard(transcript, start, urheber_suggest, mitwirkende_suggest, title_suggest, zusammenfassung_suggest, topic_persons, topic_persons_description, ndb_thema_persons_suggest, orte_suggest, institutionen_suggest, ereignis_suggest, audiofile_path, audiofile_name, file_filtered, gattungen_suggest, genre_suggest, sprachen_suggest, schlagworte_suggest, audioraum_darstellung_global_suggest, realisierung_datum_suggest, realisierung_ort_suggest,realisierung_ort_kontext, realisierung_typ_suggest)
 
             values_corrected = values_corrected_korpus
         
         else:
-            gattungen_suggest, genre_suggest, zusammenfassung_suggest, title_suggest, orte_suggest, urheber_suggest, mitwirkende_suggest, sprechende, sprechende_description, topic_persons, topic_persons_description, ndb_thema_persons_suggest, institutionen_suggest, ereignis_suggest, sprachen_suggest, schlagworte_suggest = self.prepare_ak_data_from_raw_data(transcript, multimodal_data, audiofile_path, audiofile_name, path_list_all_entities_available, path_list_all_entities_available_urheber)
+            gattungen_suggest, genre_suggest, zusammenfassung_suggest, title_suggest, orte_suggest, urheber_suggest, mitwirkende_suggest, sprechende, sprechende_description, topic_persons, topic_persons_description, ndb_thema_persons_suggest, institutionen_suggest, ereignis_suggest, sprachen_suggest, schlagworte_suggest, realisierung_datum_suggest, realisierung_ort_suggest, realisierung_ort_kontext, realisierung_typ_suggest = self.prepare_ak_data_from_raw_data(transcript, multimodal_data, audiofile_path, audiofile_name, path_list_all_entities_available, path_list_all_entities_available_urheber)
 
-            values_corrected = self.make_ak_suggests_standard(transcript, start, urheber_suggest, mitwirkende_suggest, title_suggest, zusammenfassung_suggest, topic_persons, topic_persons_description, ndb_thema_persons_suggest, orte_suggest, institutionen_suggest,ereignis_suggest, audiofile_path, audiofile_name, file_filtered, gattungen_suggest, genre_suggest, sprachen_suggest, schlagworte_suggest, audioraum_darstellung_global_suggest)
+            values_corrected = self.make_ak_suggests_standard(transcript, start, urheber_suggest, mitwirkende_suggest, title_suggest, zusammenfassung_suggest, topic_persons, topic_persons_description, ndb_thema_persons_suggest, orte_suggest, institutionen_suggest, ereignis_suggest, audiofile_path, audiofile_name, file_filtered, gattungen_suggest, genre_suggest, sprachen_suggest, schlagworte_suggest, audioraum_darstellung_global_suggest, realisierung_datum_suggest, realisierung_ort_suggest, realisierung_ort_kontext, realisierung_typ_suggest)
  
         if values_corrected[0] != False:
             #Konf/Amo-Data to pass on
