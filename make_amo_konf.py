@@ -603,7 +603,7 @@ class make_amo_konf():
            # pass
         if structure_status == 'new_komp_no_ki':
              audio_raum_output_komp = self.get_audioraumdarstellung('Excel_Lists_entities\\audioraumdarstellung_norm_ids.xlsx', konf_komp_audioraum)
-             lese_abspielgeschwindigkeit_output_komp = self.get_lese_abspielgeschwindigkeit('lesegeschwindigkeit_norm_db_ids.xlsx', lese_abspielgeschwindigkeit_komp)
+             lese_abspielgeschwindigkeit_output_komp = self.get_lese_abspielgeschwindigkeit('Excel_Lists_entities\\lesegeschwindigkeit_norm_db_ids.xlsx', lese_abspielgeschwindigkeit_komp)
 
              audio_raum_output_korpus = self.get_audioraumdarstellung('Excel_Lists_entities\\audioraumdarstellung_norm_ids.xlsx', konf_audioraum)
              lese_abspielgeschwindigkeit_output_korpus = self.get_lese_abspielgeschwindigkeit('Excel_Lists_entities\\lesegeschwindigkeit_norm_db_ids.xlsx', lese_abspiel_input)
