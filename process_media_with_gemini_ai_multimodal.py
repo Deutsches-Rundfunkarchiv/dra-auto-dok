@@ -232,6 +232,30 @@ class work_with_gemini():
 
         return(response_geordnet)
     
+    def ask_for_realisierungtyp(self, cloud_path_file):
+        """
+        Defines Gattungen from Audiofile
+        Args:
+            cloud_path_file(str): Path in Google Cloud in gs:// format for file that should be processed
+
+        Returns:
+            response_geordnet(str): LLM-Response for RealisierungTyp.
+        """
+    	#Get list of Gattungen from excel list
+        
+        list_realisierungs_typen = ['unbekannt', 'Mitschnitt', 'Studioproduktion', 'Live-Aufnahme', 'Live mit Beifall', 'Live ohne Beifall']
+        joiner = ', '
+        list_realisierungtyp_string = joiner.join(list_realisierungs_typen)
+        prompt1 = f'Welches Attribut trifft am ehesten auf dieses Audio zu? Wähle aus folgenden Möglichkeiten: {list_realisierungtyp_string} - Nur eine Antwort ist möglich. Gebe nur den Begriff aus der Liste aus, nichts weiter. Ziehe keine Begriffe in Betracht, die nicht in der Liste stehen!"'
+
+        response = self.make_prompt_with_media(cloud_path_file, prompt1, type = 'audio', file_format = 'wav', location = "europe-west4", model_name="gemini-1.5-flash-001")
+        print(response)
+        response_geordnet = response.replace('Attribut des Audios: ', '')
+        response_geordnet = response.replace('\n', '')
+        print('DEBUG RESPONSE Realisiierung Audio Typ:', response_geordnet)
+
+        return(response_geordnet)
+    
     def get_info_from_audios(self, bucket_name, audiofiles, path_audiofiles, gattungen_list):
         """Gets infos from speech only audiofiles before they are directly  erased from Google cloud to avoid costs there.
         
@@ -243,19 +267,23 @@ class work_with_gemini():
         
         """
 
-        all_infos = []
+        #all_infos = []
 
         gattung_lists = []
+        realisierung_typ_lists = []
         for f in range(len(audiofiles)):
             cloud_path = self.upload_file_to_google_cloud(bucket_name, f'file{f}', f'{path_audiofiles}\\{audiofiles[f]}')
             
             gattung_list = self.ask_for_gattung(cloud_path[0], gattungen_list)
+            realisierung_typ = self.ask_for_realisierungtyp(cloud_path[0])
+            print('DEBUG REALISIERUNG TYP AUSGABE LLM:', realisierung_typ)
+            realisierung_typ_lists.append(realisierung_typ)
             gattung_lists.append(gattung_list)
 
             self.delete_file_from_google_cloud(bucket_name, f'file{f}')
 
-        all_infos.append(gattung_lists)
+        #all_infos.append(gattung_lists, realisierung_typ)
 
-        return(all_infos)
+        return(gattung_lists, realisierung_typ_lists)
 
         
