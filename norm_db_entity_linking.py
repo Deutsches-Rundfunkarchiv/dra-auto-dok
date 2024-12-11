@@ -65,7 +65,7 @@ class norm_db_entity_linking():
                     found_funktion = False
                     berufe_funktionen = json[i]['berufeFunktionen']
                     for f in range(len(berufe_funktionen)):
-                        if found_funktion == False and berufe_funktionen[f] != None and berufe_funktionen[f].lower() in ki_text.lower(): #Erste Einträge = Höchste Stati + Beruf kommt in KI-Text vor
+                        if found_funktion == False and berufe_funktionen[f] != None and ki_text != None and berufe_funktionen[f].lower() in ki_text.lower(): #Erste Einträge = Höchste Stati + Beruf kommt in KI-Text vor
                             found_funktion == True
                             steckbrief_list.append(json[i]['steckbrief'])
                             person_id_list.append(json[i]['personId'])
