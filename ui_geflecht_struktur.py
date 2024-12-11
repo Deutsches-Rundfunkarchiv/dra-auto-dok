@@ -37,7 +37,7 @@ def ak_geflecht_menu(path_audiofiles, audiofile_name, path_pickle_last_komp_ak =
     audioplayer1 = audio_playback(f'{path_audiofiles}\\{audiofile_name}')
    
     player_line = [sg.Button("Play", key='Play_File'), sg.Button("Pause", key='Pause_File'), sg.Button("Stop", key='Stop_File')] #, sg.Button("Resume", key='Resume_File')
-    slider = [sg.Slider((0, audioplayer1.get_duration()), orientation='horizontal', key='-SL-', enable_events=True, disable_number_display = True), sg.Text(audioplayer1.format_time(0), background_color = 'black', font=('Arial Bold', 20), key='current_time')]
+    slider = [sg.Slider((0, audioplayer1.get_duration()), orientation='horizontal', key='-SL-', enable_events=True, disable_number_display = True, size = (100, 20)), sg.Text(audioplayer1.format_time(0), background_color = 'black', font=('Arial Bold', 20), key='current_time')]
     
     column_1.append([l2_titel])    
     column_1.append(player_line)
@@ -169,6 +169,7 @@ def ak_geflecht_menu(path_audiofiles, audiofile_name, path_pickle_last_komp_ak =
         elif event == sg.WIN_CLOSED or event == "Cancel": # if user closes window or clicks cancel
             audioplayer1.stop_playback()
             values_passed = None
+            window.close()
             break
 
         #Aus den einzelnen Stati einen Endstatus zaubern
